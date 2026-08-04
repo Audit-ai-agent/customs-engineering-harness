@@ -1,239 +1,350 @@
-"""Minimal local control plane for the customs workspace.
+"""Small, local coordinator for the four independent product repositories.
 
-The harness coordinates repository-owned checks.  It does not duplicate their
-test logic and it never runs a Production certification matrix.
+The harness owns only workspace validation, explicit dependency setup, and
+delegation to repository-owned checks.  It never builds a deployment, starts
+services, creates durable evidence, or copies product source.
 """
 
 from __future__ import annotations
 
 import argparse
-import datetime as dt
 import hashlib
 import json
 import os
+import re
 import shutil
-import stat
 import subprocess
 import sys
-import tempfile
 import time
 import tomllib
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping, Sequence
+from urllib.parse import urlsplit
 
 
-ENGINEERING_ROOT = Path(__file__).resolve().parents[1]
-WORKSPACE_ROOT = ENGINEERING_ROOT.parent
-CONFIG_ROOT = ENGINEERING_ROOT / "config"
-LOCAL_ROOT = WORKSPACE_ROOT / "_local"
-ARTIFACT_ROOT = WORKSPACE_ROOT / "_artifacts" / "tasks"
+HARNESS_ROOT = Path(__file__).resolve().parent.parent
+CONFIG_ROOT = HARNESS_ROOT / "config"
 REPOSITORIES = ("frontend", "backend", "ai_agent", "data_platform")
-LOCAL_PACKAGE_NAMES = {
-    "backend": "customs-backend",
-    "ai_agent": "customs-ai-agent",
-    "data_platform": "customs-data-platform",
+REPOSITORY_SELECTORS = {
+    "frontend": "frontend",
+    "customs-frontend": "frontend",
+    "backend": "backend",
+    "customs-backend": "backend",
+    "ai_agent": "ai_agent",
+    "customs-ai-agent": "ai_agent",
+    "data_platform": "data_platform",
+    "customs-data-platform": "data_platform",
 }
-GENERATED_NAMES = frozenset(
-    {
-        ".mypy_cache",
-        ".pytest_cache",
-        ".ruff_cache",
-        ".venv",
-        "__pycache__",
-        "build",
-        "coverage",
-        "dist",
-        "htmlcov",
-        "node_modules",
-        "test-results",
-    }
+_MARKER_NAME = ".customs-harness-setup.json"
+_GITHUB_HOST = "github.com"
+_SCP_GITHUB_REMOTE = re.compile(
+    r"^(?P<user>git)@github\.com:(?P<owner>[A-Za-z0-9_.-]+)/(?P<repo>[A-Za-z0-9_.-]+?)(?:\.git)?$",
+    re.IGNORECASE,
 )
-UAT_ACTIONS = ("up", "status", "open", "down", "smoke", "candidate", "restart", "hibernate")
 
 
 class HarnessError(RuntimeError):
     """A bounded, user-facing harness error."""
 
 
-def _load_toml(name: str) -> dict[str, Any]:
-    with (CONFIG_ROOT / name).open("rb") as handle:
-        return tomllib.load(handle)
-
-
-def _emit(value: Any) -> None:
-    rendered = json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True)
+def _emit(value: Mapping[str, Any]) -> None:
     try:
-        print(rendered)
+        print(json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True))
     except UnicodeEncodeError:
-        # Windows can return replacement characters in a filesystem error
-        # while the parent shell still uses cp949. Keep the failure readable
-        # instead of masking it with a second encoding exception.
         print(json.dumps(value, ensure_ascii=True, indent=2, sort_keys=True))
 
 
-def _run(
-    argv: list[str],
-    *,
-    cwd: Path,
-    env: dict[str, str] | None = None,
-    capture: bool = False,
-    timeout: int | None = None,
-) -> dict[str, Any]:
-    resolved = list(argv)
-    if os.name == "nt" and resolved and not Path(resolved[0]).is_absolute():
-        executable = shutil.which(resolved[0], path=(env or os.environ).get("PATH"))
-        if executable:
-            resolved[0] = executable
-    started = time.monotonic()
-    completed = subprocess.run(
-        resolved,
-        cwd=cwd,
-        env=env,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        capture_output=capture,
-        timeout=timeout,
-        check=False,
-    )
-    result: dict[str, Any] = {
-        "command": argv,
-        "exit_code": completed.returncode,
-        "duration_seconds": round(time.monotonic() - started, 3),
-    }
-    if capture:
-        result.update(stdout=completed.stdout.strip(), stderr=completed.stderr.strip())
-    return result
-
-
-def _git(repository: Path, *arguments: str, check: bool = True) -> str:
-    result = _run(
-        ["git", "-C", str(repository), *arguments],
-        cwd=WORKSPACE_ROOT,
-        capture=True,
-    )
-    if check and result["exit_code"] != 0:
-        raise HarnessError(str(result.get("stderr") or result.get("stdout") or "git failed"))
-    return str(result.get("stdout", "")).strip()
-
-
-def _definitions() -> dict[str, dict[str, Any]]:
-    records = _load_toml("workspace.toml").get("repos")
-    if not isinstance(records, dict) or set(records) != set(REPOSITORIES):
-        raise HarnessError("workspace repository configuration is invalid")
-    return {name: dict(record) for name, record in records.items()}
-
-
-def _configured_string(record: dict[str, Any], key: str, label: str) -> str:
-    value = record.get(key)
-    if not isinstance(value, str) or not value:
-        raise HarnessError(f"{label} is invalid")
+def _load_toml(name: str) -> dict[str, Any]:
+    path = CONFIG_ROOT / name
+    try:
+        with path.open("rb") as handle:
+            value = tomllib.load(handle)
+    except (OSError, tomllib.TOMLDecodeError) as exc:
+        raise HarnessError(f"invalid configuration: {name}") from exc
+    if not isinstance(value, dict):
+        raise HarnessError(f"invalid configuration: {name}")
     return value
 
 
-def _assert_remote(
-    repository: Path,
-    remote: str,
-    expected: str,
-    *,
-    push: bool = False,
-) -> str:
-    arguments = ["remote", "get-url"]
-    if push:
-        arguments.append("--push")
-    arguments.append(remote)
-    actual = _git(repository, *arguments, check=False)
-    if actual != expected:
-        direction = " push" if push else ""
-        raise HarnessError(f"{repository.name} {remote}{direction} URL differs from its configuration")
-    return actual
+def _required_string(record: Mapping[str, Any], key: str, label: str) -> str:
+    value = record.get(key)
+    if not isinstance(value, str) or not value.strip():
+        raise HarnessError(f"{label} is invalid")
+    return value.strip()
 
 
-def _expected_harness_origin() -> str:
-    harness = _load_toml("workspace.toml").get("harness")
-    if not isinstance(harness, dict):
-        raise HarnessError("harness repository configuration is invalid")
-    return _configured_string(dict(harness), "expected_origin", "harness expected_origin")
+def _workspace_config() -> dict[str, Any]:
+    return _load_toml("workspace.toml")
+
+
+def _workspace_root() -> Path:
+    config = _workspace_config()
+    raw = _required_string(config, "workspace_root", "workspace_root")
+    root = (HARNESS_ROOT / raw).resolve()
+    if not root.is_dir():
+        raise HarnessError("workspace root is unavailable")
+    try:
+        HARNESS_ROOT.relative_to(root)
+    except ValueError as exc:
+        raise HarnessError("workspace root must contain this harness") from exc
+    return root
+
+
+def _definitions() -> dict[str, dict[str, Any]]:
+    records = _workspace_config().get("repos")
+    if not isinstance(records, dict) or set(records) != set(REPOSITORIES):
+        raise HarnessError("workspace repository configuration is invalid")
+    if not all(isinstance(value, dict) for value in records.values()):
+        raise HarnessError("workspace repository configuration is invalid")
+    return {name: dict(records[name]) for name in REPOSITORIES}
+
+
+def _canonical_repository(value: str) -> str:
+    parts = value.strip().split("/")
+    if (
+        len(parts) != 2
+        or not all(re.fullmatch(r"[A-Za-z0-9_.-]+", part or "") for part in parts)
+    ):
+        raise HarnessError("configured GitHub repository identity is invalid")
+    return "/".join(part.casefold() for part in parts)
+
+
+def normalize_github_origin(value: str) -> str:
+    """Return the case-insensitive ``owner/repository`` GitHub identity.
+
+    Only normal HTTPS and SSH GitHub clone forms are accepted.  In particular,
+    URLs containing credentials or a non-GitHub host are not silently accepted.
+    """
+
+    raw = value.strip()
+    scp_match = _SCP_GITHUB_REMOTE.fullmatch(raw)
+    if scp_match:
+        return _canonical_repository(f"{scp_match.group('owner')}/{scp_match.group('repo')}")
+
+    parsed = urlsplit(raw)
+    if parsed.scheme == "https":
+        if parsed.hostname is None or parsed.hostname.casefold() != _GITHUB_HOST:
+            raise HarnessError("origin must use github.com")
+        if parsed.username is not None or parsed.password is not None or parsed.port not in (None, 443):
+            raise HarnessError("origin URL is not an allowed GitHub HTTPS clone URL")
+    elif parsed.scheme == "ssh":
+        if (
+            parsed.hostname is None
+            or parsed.hostname.casefold() != _GITHUB_HOST
+            or parsed.username != "git"
+            or parsed.password is not None
+            or parsed.port not in (None, 22)
+        ):
+            raise HarnessError("origin URL is not an allowed GitHub SSH clone URL")
+    else:
+        raise HarnessError("origin must use HTTPS or SSH GitHub clone syntax")
+
+    if parsed.query or parsed.fragment:
+        raise HarnessError("origin URL is not an allowed GitHub clone URL")
+    path = parsed.path.strip("/")
+    if path.casefold().endswith(".git"):
+        path = path[:-4]
+    return _canonical_repository(path)
 
 
 def _repo(name: str) -> Path:
     if name not in REPOSITORIES:
         raise HarnessError(f"unknown repository: {name}")
-    path = (ENGINEERING_ROOT / str(_definitions()[name]["path"])).resolve()
-    try:
-        path.relative_to(WORKSPACE_ROOT.resolve())
-    except ValueError as exc:
-        raise HarnessError(f"repository escaped workspace: {name}") from exc
-    if not path.is_dir() or not (path / ".git").exists():
+    definition = _definitions()[name]
+    directory = _required_string(definition, "directory", f"{name} directory")
+    if Path(directory).name != directory or directory in {".", ".."}:
+        raise HarnessError(f"{name} directory must be a sibling directory name")
+    workspace = _workspace_root()
+    path = (workspace / directory).resolve()
+    if path.parent != workspace or not path.is_dir() or not (path / ".git").exists():
         raise HarnessError(f"repository is unavailable: {name}")
     return path
 
 
+def _repository_name(selector: str | None) -> str | None:
+    """Normalize concise and GitHub repository selectors to one config key."""
+
+    if selector is None:
+        return None
+    name = REPOSITORY_SELECTORS.get(selector)
+    if name is None:
+        raise HarnessError(f"unknown repository: {selector}")
+    return name
+
+
+def _run(
+    argv: Sequence[str],
+    *,
+    cwd: Path,
+    env: Mapping[str, str] | None = None,
+    capture: bool = False,
+) -> dict[str, Any]:
+    command = list(argv)
+    if not command:
+        raise HarnessError("empty command is not allowed")
+    executable = shutil.which(command[0], path=(env or os.environ).get("PATH"))
+    if executable is not None:
+        command[0] = executable
+    started = time.monotonic()
+    completed = subprocess.run(
+        command,
+        cwd=cwd,
+        env=dict(env) if env is not None else None,
+        check=False,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        capture_output=capture,
+    )
+    result: dict[str, Any] = {
+        "command": command,
+        "duration_seconds": round(time.monotonic() - started, 3),
+        "exit_code": completed.returncode,
+    }
+    if capture:
+        result["stdout"] = completed.stdout.strip()
+        result["stderr"] = completed.stderr.strip()
+    return result
+
+
+def _git(repository: Path, *arguments: str, check: bool = True) -> str:
+    result = _run(["git", "-C", str(repository), *arguments], cwd=_workspace_root(), capture=True)
+    if check and result["exit_code"] != 0:
+        raise HarnessError("Git command failed")
+    return str(result.get("stdout", "")).strip()
+
+
+def _origin_identity(repository: Path) -> str:
+    result = _run(
+        ["git", "-C", str(repository), "remote", "get-url", "origin"],
+        cwd=_workspace_root(),
+        capture=True,
+    )
+    if result["exit_code"] != 0:
+        raise HarnessError(f"{repository.name} does not have an origin remote")
+    return normalize_github_origin(str(result.get("stdout", "")))
+
+
+def _assert_repository_origin(name: str, repository: Path) -> str:
+    expected = _canonical_repository(
+        _required_string(_definitions()[name], "repository", f"{name} repository")
+    )
+    actual = _origin_identity(repository)
+    if actual != expected:
+        raise HarnessError(f"{repository.name} origin does not identify the configured GitHub repository")
+    return actual
+
+
+def _harness_identity() -> str:
+    harness = _workspace_config().get("harness")
+    if not isinstance(harness, dict):
+        raise HarnessError("harness repository configuration is invalid")
+    return _canonical_repository(_required_string(harness, "repository", "harness repository"))
+
+
+def _assert_harness_origin() -> str:
+    actual = _origin_identity(HARNESS_ROOT)
+    if actual != _harness_identity():
+        raise HarnessError("harness origin does not identify the configured GitHub repository")
+    return actual
+
+
 def _repo_state(name: str) -> dict[str, Any]:
     repository = _repo(name)
-    definition = _definitions()[name]
-    state = {
+    return {
         "branch": _git(repository, "branch", "--show-current"),
-        "revision": _git(repository, "rev-parse", "HEAD"),
         "dirty": bool(_git(repository, "status", "--porcelain=v1", "--untracked-files=all")),
-        "origin": _assert_remote(
-            repository,
-            "origin",
-            _configured_string(definition, "expected_origin", f"{name} expected_origin"),
-        ),
+        "origin": _assert_repository_origin(name, repository),
+        "revision": _git(repository, "rev-parse", "HEAD"),
     }
-    if "expected_upstream" in definition:
-        state["upstream"] = _assert_remote(
-            repository,
-            "upstream",
-            _configured_string(definition, "expected_upstream", f"{name} expected_upstream"),
-        )
-        state["upstream_push"] = _assert_remote(
-            repository,
-            "upstream",
-            _configured_string(
-                definition, "expected_upstream_push", f"{name} expected_upstream_push"
-            ),
-            push=True,
-        )
-    return state
 
 
-def _directory_size(path: Path) -> int:
-    total = 0
-    if not path.exists():
-        return 0
-    for item in path.rglob("*"):
-        try:
-            if item.is_file() and not item.is_symlink():
-                total += item.stat().st_size
-        except OSError:
-            continue
-    return total
+def _first_line(command: Sequence[str]) -> str | None:
+    executable = shutil.which(command[0])
+    if executable is None:
+        return None
+    completed = subprocess.run(
+        [executable, *command[1:]],
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        check=False,
+    )
+    if completed.returncode != 0:
+        return None
+    return completed.stdout.splitlines()[0].strip() if completed.stdout else ""
+
+
+def _tool_versions() -> dict[str, str]:
+    config = _workspace_config().get("tooling")
+    if not isinstance(config, dict):
+        raise HarnessError("tooling configuration is invalid")
+    expected_python = _required_string(config, "python", "tooling python")
+    expected_git_minimum = _required_string(config, "git_minimum", "tooling git_minimum")
+    node_major = config.get("node_major")
+    if not isinstance(node_major, int) or node_major < 1:
+        raise HarnessError("tooling node_major is invalid")
+    node_minimum = _required_string(config, "node_minimum", "tooling node_minimum")
+    minimum_node_match = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)", node_minimum)
+    if minimum_node_match is None:
+        raise HarnessError("tooling node_minimum is invalid")
+    minimum_node = tuple(int(value) for value in minimum_node_match.groups())
+    if minimum_node[0] != node_major:
+        raise HarnessError("tooling Node major and minimum are inconsistent")
+
+    python_version = f"{sys.version_info.major}.{sys.version_info.minor}"
+    if python_version != expected_python:
+        raise HarnessError(f"Python {expected_python} is required")
+
+    git_version = _first_line(("git", "--version"))
+    if git_version is None:
+        raise HarnessError("Git is required")
+    git_match = re.search(r"(\d+)\.(\d+)(?:\.(\d+))?", git_version)
+    minimum_match = re.fullmatch(r"(\d+)\.(\d+)(?:\.(\d+))?", expected_git_minimum)
+    if git_match is None or minimum_match is None:
+        raise HarnessError("Git version could not be validated")
+    actual_git = tuple(int(value or 0) for value in git_match.groups())
+    minimum_git = tuple(int(value or 0) for value in minimum_match.groups())
+    if actual_git < minimum_git:
+        raise HarnessError(f"Git {expected_git_minimum} or newer is required")
+
+    node_version = _first_line(("node", "--version"))
+    node_match = re.fullmatch(r"v?(\d+)\.(\d+)\.(\d+)", node_version or "")
+    actual_node = tuple(int(value) for value in node_match.groups()) if node_match else None
+    if actual_node is None or actual_node[0] != node_major or actual_node < minimum_node:
+        raise HarnessError(f"Node.js {node_minimum} or newer within {node_major}.x is required")
+    npm_version = _first_line(("npm", "--version"))
+    if npm_version is None:
+        raise HarnessError("npm is required")
+    uv_version = _first_line(("uv", "--version"))
+    if uv_version is None:
+        raise HarnessError("uv is required for Python repository setup")
+    return {
+        "git": git_version,
+        "node": node_version,
+        "npm": npm_version,
+        "python": sys.version.split()[0],
+        "uv": uv_version,
+    }
 
 
 def doctor() -> dict[str, Any]:
-    if (WORKSPACE_ROOT / ".git").exists():
-        raise HarnessError("project root must not be a Git repository")
-    if _git(ENGINEERING_ROOT, "remote").splitlines() != ["origin"]:
-        raise HarnessError("harness must have exactly one origin remote")
-    harness_origin = _assert_remote(ENGINEERING_ROOT, "origin", _expected_harness_origin())
-    disk = shutil.disk_usage(WORKSPACE_ROOT)
+    """Validate the shareable workspace without requiring a personal upstream."""
+
     return {
-        "status": "PASS",
-        "level": "L0",
         "artifact_created": False,
-        "free_bytes": disk.free,
-        "repositories": {name: _repo_state(name) for name in REPOSITORIES},
         "harness": {
-            "revision": _git(ENGINEERING_ROOT, "rev-parse", "HEAD"),
-            "dirty": bool(_git(ENGINEERING_ROOT, "status", "--porcelain=v1")),
-            "origin": harness_origin,
+            "directory": HARNESS_ROOT.name,
+            "dirty": bool(_git(HARNESS_ROOT, "status", "--porcelain=v1", "--untracked-files=all")),
+            "origin": _assert_harness_origin(),
+            "revision": _git(HARNESS_ROOT, "rev-parse", "HEAD"),
         },
-        "storage_bytes": {
-            "artifacts": _directory_size(WORKSPACE_ROOT / "_artifacts"),
-            "local": _directory_size(LOCAL_ROOT),
-        },
+        "repositories": {name: _repo_state(name) for name in REPOSITORIES},
+        "status": "PASS",
+        "tools": _tool_versions(),
+        "workspace": str(_workspace_root()),
     }
 
 
@@ -245,362 +356,233 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def _uv() -> Path:
-    configured = Path(
-        os.environ.get(
-            "CUSTOMS_UV",
-            str(Path(os.environ["LOCALAPPDATA"]) / "CustomsUAT/cache/tools/uv/v0.11.28/uv.exe"),
-        )
+def _marker_path(repository: Path, runtime: str) -> Path:
+    if runtime == "npm":
+        return repository / "node_modules" / _MARKER_NAME
+    if runtime == "uv":
+        return repository / ".venv" / _MARKER_NAME
+    raise HarnessError("repository runtime is invalid")
+
+
+def _setup_fingerprint(repository: Path, runtime: str) -> dict[str, str]:
+    lock_name = "package-lock.json" if runtime == "npm" else "uv.lock"
+    lock = repository / lock_name
+    if not lock.is_file():
+        raise HarnessError(f"{repository.name} is missing {lock_name}")
+    return {"lock_file": lock_name, "lock_sha256": _sha256(lock), "schema_version": "1"}
+
+
+def _read_marker(repository: Path, runtime: str) -> dict[str, str] | None:
+    marker = _marker_path(repository, runtime)
+    try:
+        value = json.loads(marker.read_text(encoding="utf-8"))
+    except (OSError, ValueError, json.JSONDecodeError):
+        return None
+    if not isinstance(value, dict) or not all(isinstance(item, str) for item in value.values()):
+        return None
+    return {str(key): str(item) for key, item in value.items()}
+
+
+def _write_marker(repository: Path, runtime: str) -> None:
+    marker = _marker_path(repository, runtime)
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    marker.write_text(
+        json.dumps(_setup_fingerprint(repository, runtime), sort_keys=True) + "\n",
+        encoding="utf-8",
     )
-    if configured.is_file():
-        return configured
-    located = shutil.which("uv")
-    if located:
-        return Path(located)
-    raise HarnessError("managed uv executable is unavailable")
 
 
-def _npm() -> Path:
-    configured = Path(os.environ["LOCALAPPDATA"]) / "CustomsUAT/cache/tools/node/v22.23.1/npm.cmd"
-    if configured.is_file():
-        return configured
-    located = shutil.which("npm.cmd" if os.name == "nt" else "npm")
-    if located:
-        return Path(located)
-    raise HarnessError("npm is unavailable")
+def _runtime(name: str) -> str:
+    runtime = _definitions()[name].get("runtime")
+    if runtime not in {"npm", "uv"}:
+        raise HarnessError(f"{name} runtime is invalid")
+    return str(runtime)
 
 
-def _managed_environment(name: str, level: str) -> tuple[dict[str, str], Path | None]:
-    repository = _repo(name)
-    environment = dict(os.environ)
-    cache_root = Path(os.environ["LOCALAPPDATA"]) / "CustomsUAT" / "cache"
-    cache_root.mkdir(parents=True, exist_ok=True)
-    scratch = Path(tempfile.gettempdir()) / "customs-uat" / "r" / f"check-{os.getpid()}"
-    scratch.mkdir(parents=True, exist_ok=True)
-    environment.update(
-        {
-            "TEMP": str(scratch),
-            "TMP": str(scratch),
-            "TMPDIR": str(scratch),
-            "PYTHONDONTWRITEBYTECODE": "1",
-            "PYTHONPYCACHEPREFIX": str(scratch / "pycache"),
-            "UV_CACHE_DIR": str(cache_root / "uv"),
-            "npm_config_cache": str(cache_root / "npm"),
-        }
-    )
-    if name == "frontend":
-        node_root = _npm().parent
-        environment["PATH"] = str(node_root) + os.pathsep + environment.get("PATH", "")
-        result = _run([str(_npm()), "ci", "--prefer-offline"], cwd=repository, env=environment)
-        if result["exit_code"] != 0:
-            shutil.rmtree(scratch, ignore_errors=True)
-            raise HarnessError("frontend dependency installation failed")
-        return environment, None
-    lock = repository / "uv.lock"
-    lock_hash = _sha256(lock)[:16]
-    managed = cache_root.parent / "envs" / "checks" / f"{name}-{lock_hash}-{level}"
-    environment["UV_PROJECT_ENVIRONMENT"] = str(managed)
-    sync = [str(_uv()), "sync", "--locked", "--no-editable"]
-    sync.extend(["--reinstall-package", LOCAL_PACKAGE_NAMES[name]])
-    configured_sync = _definitions()[name].get(f"{level}_sync", [])
-    if not isinstance(configured_sync, list) or not all(isinstance(item, str) for item in configured_sync):
-        raise HarnessError(f"invalid {level}_sync configuration for {name}")
-    sync.extend(configured_sync)
-    result = _run(sync, cwd=repository, env=environment)
-    if result["exit_code"] != 0:
-        shutil.rmtree(scratch, ignore_errors=True)
-        raise HarnessError(f"{name} dependency installation failed")
-    environment["PATH"] = str(managed / ("Scripts" if os.name == "nt" else "bin")) + os.pathsep + environment.get("PATH", "")
-    return environment, managed
-
-
-def _configured_commands(name: str, level: str) -> list[list[str]]:
-    value = _definitions()[name].get(level)
+def _configured_commands(name: str, field: str) -> list[list[str]]:
+    value = _definitions()[name].get(field)
     if not isinstance(value, list) or not value:
-        raise HarnessError(f"no {level} command configured for {name}")
+        raise HarnessError(f"no {field} command configured for {name}")
     commands: list[list[str]] = []
     for command in value:
         if not isinstance(command, list) or not command or not all(isinstance(item, str) for item in command):
-            raise HarnessError(f"invalid {level} command for {name}")
+            raise HarnessError(f"invalid {field} command configured for {name}")
         commands.append(list(command))
     return commands
 
 
-def _compact_summary(
-    task_id: str,
-    *,
-    level: str,
-    status: str,
-    results: list[dict[str, Any]],
-) -> Path:
-    task_id = _task_id(task_id)
-    ARTIFACT_ROOT.mkdir(parents=True, exist_ok=True)
-    destination = ARTIFACT_ROOT / f"{task_id}.json"
-    previous: dict[str, Any] = {}
-    if destination.is_file():
-        try:
-            previous = json.loads(destination.read_text(encoding="utf-8"))
-        except (OSError, ValueError, json.JSONDecodeError):
-            previous = {}
-    payload = {
-        **previous,
-        "schema_version": "customs-task-evidence/v2",
-        "task_id": task_id,
-        "state": "final" if level == "candidate" and status == "PASS" else "checkpoint",
-        "updated_at_utc": dt.datetime.now(dt.UTC).isoformat(timespec="seconds").replace("+00:00", "Z"),
-        "validation_level": level,
-        "status": status,
-        "repositories": {name: _repo_state(name) for name in REPOSITORIES},
-        "latest_results": [
-            {
-                "scope": item["scope"],
-                "exit_code": item["exit_code"],
-                "duration_seconds": item["duration_seconds"],
-            }
-            for item in results
-        ],
-        "production_release": False,
-    }
-    canonical = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
-    payload["content_sha256"] = hashlib.sha256(canonical).hexdigest()
-    temporary = destination.with_suffix(".tmp")
-    temporary.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    os.replace(temporary, destination)
-    return destination
+def _frontend_tree_is_healthy(repository: Path) -> bool:
+    if not (repository / "node_modules").is_dir():
+        return False
+    result = _run(["npm", "ls", "--depth=0", "--ignore-scripts"], cwd=repository, capture=True)
+    return result["exit_code"] == 0
 
 
-def _functional_check(task_id: str, scope: str) -> dict[str, Any]:
-    started = time.monotonic()
+def _setup_frontend(repository: Path) -> str:
+    fingerprint = _setup_fingerprint(repository, "npm")
+    if _read_marker(repository, "npm") == fingerprint and _frontend_tree_is_healthy(repository):
+        return "reused"
+    # ``npm install`` reads the checked-in lockfile while synchronizing the
+    # existing directory in place. Unlike ``npm ci``, an explicit repeated
+    # setup does not begin by deleting a healthy node_modules tree.
     result = _run(
-        [
-            sys.executable,
-            "-B",
-            str(ENGINEERING_ROOT / "harness" / "functional_uat.py"),
-            "--task",
-            task_id,
-            "--live",
-            "--scope",
-            scope,
-        ],
-        cwd=ENGINEERING_ROOT,
-        capture=True,
-        # Nine sequential Claude/RAG Root cases plus the bounded Chat/HITL
-        # scopes are intentionally allowed to take up to three hours.
-        timeout=3 * 60 * 60,
-    )
-    try:
-        payload = json.loads(str(result.get("stdout", "")))
-    except (ValueError, json.JSONDecodeError) as exc:
-        raise HarnessError("functional UAT returned invalid output") from exc
-    if result["exit_code"] != 0 or not isinstance(payload, dict):
-        safe_error = (
-            payload.get("error_code") or payload.get("error")
-            if isinstance(payload, dict)
-            else None
-        )
-        raise HarnessError(str(safe_error or "functional UAT failed"))
-    if payload.get("status") != "PASS":
-        raise HarnessError("functional UAT did not pass the requested scope")
-    ARTIFACT_ROOT.mkdir(parents=True, exist_ok=True)
-    destination = ARTIFACT_ROOT / f"{task_id}.json"
-    artifact = {
-        "schema_version": "customs-task-functional-evidence/v1",
-        "task_id": task_id,
-        "state": "final" if scope == "all" else "checkpoint",
-        "status": "PASS",
-        "validation_level": "functional",
-        "updated_at_utc": dt.datetime.now(dt.UTC)
-        .isoformat(timespec="seconds")
-        .replace("+00:00", "Z"),
-        "repositories": {name: _repo_state(name) for name in REPOSITORIES},
-        "functional_uat": payload,
-        "production_release": False,
-    }
-    canonical = json.dumps(
-        artifact,
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
-    ).encode("utf-8")
-    artifact["content_sha256"] = hashlib.sha256(canonical).hexdigest()
-    temporary = destination.with_suffix(".tmp")
-    temporary.write_text(
-        json.dumps(artifact, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
-    os.replace(temporary, destination)
-    return {
-        "status": "PASS",
-        "level": "L3-FUNCTIONAL",
-        "scope": scope,
-        "duration_seconds": round(time.monotonic() - started, 3),
-        "artifact": str(destination.relative_to(WORKSPACE_ROOT)),
-        "production_release": False,
-    }
-
-
-def check(
-    level: str,
-    repository: str | None,
-    task_id: str | None,
-    live: bool,
-    scope: str | None = None,
-) -> dict[str, Any]:
-    if level in {"quick", "contract"}:
-        if repository not in REPOSITORIES:
-            raise HarnessError(f"{level} requires one explicit --repo")
-        if level == "contract" and task_id is None:
-            raise HarnessError("contract requires --task")
-        environment: dict[str, str] | None = None
-        managed: Path | None = None
-        results: list[dict[str, Any]] = []
-        try:
-            environment, managed = _managed_environment(repository, level)
-            for command in _configured_commands(repository, level):
-                result = _run(command, cwd=_repo(repository), env=environment)
-                result["scope"] = repository
-                results.append(result)
-                if result["exit_code"] != 0:
-                    break
-        finally:
-            if repository == "frontend":
-                for name in ("node_modules", "dist", "coverage", "test-results"):
-                    shutil.rmtree(_repo(repository) / name, ignore_errors=True)
-            elif managed is not None:
-                shutil.rmtree(managed, ignore_errors=True)
-            scratch_root = Path(tempfile.gettempdir()) / "customs-uat" / "r"
-            for scratch in scratch_root.glob(f"check-{os.getpid()}") if scratch_root.exists() else ():
-                shutil.rmtree(scratch, ignore_errors=True)
-        status = "PASS" if results and all(item["exit_code"] == 0 for item in results) else "FAIL"
-        artifact = None
-        if level == "contract" and task_id:
-            artifact = _compact_summary(task_id, level=level, status=status, results=results)
-        if status != "PASS":
-            raise HarnessError(f"{repository} {level} check failed")
-        return {
-            "status": status,
-            "level": "L1" if level == "quick" else "L2",
-            "repository": repository,
-            "artifact": str(artifact.relative_to(WORKSPACE_ROOT)) if artifact else None,
-        }
-    if level == "functional":
-        if repository is not None or task_id != "TASK-0033" or not live or scope is None:
-            raise HarnessError(
-                "functional requires --task TASK-0033 --live --scope <scope> and no --repo"
-            )
-        return _functional_check(_task_id(task_id), scope)
-    if level != "candidate" or repository is not None or not task_id or not live or scope:
-        raise HarnessError("candidate requires --task <TASK-ID> --live and no --repo")
-    started = time.monotonic()
-    uat_result = uat("candidate")
-    result = {
-        "scope": "representative_user_journey",
-        "exit_code": 0,
-        "duration_seconds": round(time.monotonic() - started, 3),
-    }
-    artifact = _compact_summary(task_id, level="candidate", status="PASS", results=[result])
-    return {
-        "status": "PASS",
-        "level": "L3-CANDIDATE",
-        "journey_count": 1,
-        "uat": uat_result,
-        "artifact": str(artifact.relative_to(WORKSPACE_ROOT)),
-    }
-
-
-def _tracked_descendant(path: Path) -> bool:
-    for root in (ENGINEERING_ROOT, *(_repo(name) for name in REPOSITORIES)):
-        try:
-            relative = path.resolve().relative_to(root.resolve())
-        except ValueError:
-            continue
-        return bool(_git(root, "ls-files", "--", relative.as_posix(), check=False))
-    return False
-
-
-def _remove_tree(path: Path) -> None:
-    target = str(path.resolve())
-    if os.name == "nt" and not target.startswith("\\\\?\\"):
-        target = (
-            "\\\\?\\UNC\\" + target[2:]
-            if target.startswith("\\\\")
-            else "\\\\?\\" + target
-        )
-
-    def make_writable_and_retry(function: Any, name: str, _error: Any) -> None:
-        os.chmod(name, stat.S_IWRITE)
-        function(name)
-
-    shutil.rmtree(target, onerror=make_writable_and_retry)
-
-
-def cleanup_candidates() -> list[dict[str, Any]]:
-    candidates: set[Path] = set()
-    for root in (ENGINEERING_ROOT, *(_repo(name) for name in REPOSITORIES)):
-        for path in root.rglob("*"):
-            if path.is_dir() and (path.name in GENERATED_NAMES or path.name.endswith(".egg-info")):
-                candidates.add(path)
-    scratch_root = Path(tempfile.gettempdir()) / "customs-uat" / "r"
-    if scratch_root.is_dir():
-        candidates.update(path for path in scratch_root.iterdir() if path.is_dir())
-    legacy_uat_runtime = LOCAL_ROOT / "state" / "runtime" / "local-user-uat"
-    if legacy_uat_runtime.is_dir():
-        candidates.add(legacy_uat_runtime)
-    uat_state_root = LOCAL_ROOT / "state" / "local-user-uat"
-    if uat_state_root.is_dir():
-        candidates.update(
-            path
-            for path in uat_state_root.iterdir()
-            if path.is_dir()
-            and path.name.startswith("data-context-")
-            and path.name != "data-context"
-        )
-    result: list[dict[str, Any]] = []
-    for path in sorted(candidates, key=lambda item: (len(item.parts), str(item).casefold())):
-        if any(parent in candidates for parent in path.parents):
-            continue
-        if path.is_symlink() or _tracked_descendant(path):
-            continue
-        result.append({"path": str(path), "bytes": _directory_size(path)})
-    return result
-
-
-def clean(*, apply: bool) -> dict[str, Any]:
-    candidates = cleanup_candidates()
-    removed = 0
-    if apply:
-        for record in candidates:
-            path = Path(record["path"])
-            if path.exists() and not path.is_symlink() and not _tracked_descendant(path):
-                _remove_tree(path)
-                removed += int(record["bytes"])
-    return {
-        "status": "PASS",
-        "mode": "apply" if apply else "dry-run",
-        "candidate_count": len(candidates),
-        "candidate_bytes": sum(int(item["bytes"]) for item in candidates),
-        "removed_bytes": removed,
-        "candidates": candidates,
-        "artifact_created": False,
-    }
-
-
-def uat(action: str) -> dict[str, Any]:
-    if action not in UAT_ACTIONS:
-        raise HarnessError(f"unsupported UAT action: {action}")
-    result = _run(
-        [sys.executable, "-B", str(ENGINEERING_ROOT / "harness" / "local_user_uat.py"), action],
-        cwd=ENGINEERING_ROOT,
-        capture=True,
-        timeout=2100 if action in {"up", "restart", "smoke", "candidate"} else 180,
+        ["npm", "install", "--package-lock=true", "--prefer-offline"], cwd=repository
     )
     if result["exit_code"] != 0:
-        raise HarnessError(str(result.get("stderr") or result.get("stdout") or f"UAT {action} failed"))
-    try:
-        payload = json.loads(str(result.get("stdout", "")))
-    except (ValueError, json.JSONDecodeError) as exc:
-        raise HarnessError("UAT returned invalid output") from exc
-    return payload
+        raise HarnessError("frontend dependency setup failed")
+    _write_marker(repository, "npm")
+    return "synchronized"
+
+
+def _setup_python(name: str, repository: Path) -> str:
+    commands = _configured_commands(name, "setup")
+    for command in commands:
+        result = _run(command, cwd=repository)
+        if result["exit_code"] != 0:
+            raise HarnessError(f"{name} dependency setup failed")
+    python = _venv_python(repository)
+    if python is None:
+        raise HarnessError(f"{name} setup did not create a local .venv")
+    _write_marker(repository, "uv")
+    return "reused_or_synchronized"
+
+
+def setup(name: str | None) -> dict[str, Any]:
+    selected = _repository_name(name)
+    names = REPOSITORIES if selected is None else (selected,)
+    results: dict[str, dict[str, str]] = {}
+    for selected in names:
+        repository = _repo(selected)
+        _assert_repository_origin(selected, repository)
+        runtime = _runtime(selected)
+        action = _setup_frontend(repository) if runtime == "npm" else _setup_python(selected, repository)
+        results[selected] = {"path": str(repository), "state": action}
+    return {"artifact_created": False, "repositories": results, "status": "PASS"}
+
+
+def _venv_python(repository: Path) -> Path | None:
+    candidates = (
+        repository / ".venv" / "Scripts" / "python.exe",
+        repository / ".venv" / "bin" / "python",
+    )
+    return next((candidate for candidate in candidates if candidate.is_file()), None)
+
+
+def _check_environment(name: str, repository: Path) -> Mapping[str, str]:
+    runtime = _runtime(name)
+    fingerprint = _setup_fingerprint(repository, runtime)
+    if _read_marker(repository, runtime) != fingerprint:
+        raise HarnessError(f"{name} dependencies are not prepared for the current lock; run setup")
+    environment = dict(os.environ)
+    environment["PYTHONDONTWRITEBYTECODE"] = "1"
+    if runtime == "npm":
+        if not _frontend_tree_is_healthy(repository):
+            raise HarnessError("frontend dependencies are incomplete; run setup")
+        return environment
+    python = _venv_python(repository)
+    if python is None:
+        raise HarnessError(f"{name} local .venv is unavailable; run setup")
+    environment["PATH"] = str(python.parent) + os.pathsep + environment.get("PATH", "")
+    return environment
+
+
+def check(level: str, name: str | None) -> dict[str, Any]:
+    if level not in {"quick", "contract"}:
+        raise HarnessError("check supports only quick and contract")
+    selected = _repository_name(name)
+    if selected is None:
+        raise HarnessError(f"{level} requires one explicit --repo")
+    repository = _repo(selected)
+    _assert_repository_origin(selected, repository)
+    environment = _check_environment(selected, repository)
+    results: list[dict[str, Any]] = []
+    for command in _configured_commands(selected, level):
+        result = _run(command, cwd=repository, env=environment)
+        results.append(result)
+        if result["exit_code"] != 0:
+            raise HarnessError(f"{selected} {level} check failed")
+    return {
+        "artifact_created": False,
+        "level": "L1" if level == "quick" else "L2",
+        "repository": selected,
+        "results": results,
+        "status": "PASS",
+    }
+
+
+def _tracked_files_sha256(repository: Path) -> str:
+    completed = subprocess.run(
+        ["git", "-C", str(repository), "ls-files", "-s", "-z"],
+        cwd=_workspace_root(),
+        check=False,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    if completed.returncode != 0:
+        raise HarnessError("could not read tracked file inventory")
+    return hashlib.sha256(completed.stdout).hexdigest()
+
+
+def _snapshot_definitions() -> dict[str, dict[str, str]]:
+    snapshot = _load_toml("project-snapshot.toml")
+    if snapshot.get("schema_version") != "customs-project-snapshot/v2":
+        raise HarnessError("project snapshot schema is unsupported")
+    records = snapshot.get("repositories")
+    if not isinstance(records, dict) or set(records) != set(REPOSITORIES):
+        raise HarnessError("project snapshot repository configuration is invalid")
+    validated: dict[str, dict[str, str]] = {}
+    for name in REPOSITORIES:
+        record = records[name]
+        if not isinstance(record, dict):
+            raise HarnessError("project snapshot repository configuration is invalid")
+        validated[name] = {
+            "branch": _required_string(record, "branch", f"snapshot {name} branch"),
+            "repository": _canonical_repository(
+                _required_string(record, "repository", f"snapshot {name} repository")
+            ),
+            "revision": _required_string(record, "revision", f"snapshot {name} revision"),
+            "tracked_files_sha256": _required_string(
+                record, "tracked_files_sha256", f"snapshot {name} tracked_files_sha256"
+            ),
+        }
+        if not re.fullmatch(r"[0-9a-f]{40}", validated[name]["revision"]):
+            raise HarnessError(f"snapshot {name} revision is invalid")
+        if not re.fullmatch(r"[0-9a-f]{64}", validated[name]["tracked_files_sha256"]):
+            raise HarnessError(f"snapshot {name} tracked_files_sha256 is invalid")
+    return validated
+
+
+def snapshot_verify() -> dict[str, Any]:
+    records = _snapshot_definitions()
+    results: dict[str, dict[str, Any]] = {}
+    for name in REPOSITORIES:
+        repository = _repo(name)
+        expected = records[name]
+        configured_identity = _canonical_repository(
+            _required_string(_definitions()[name], "repository", f"{name} repository")
+        )
+        if expected["repository"] != configured_identity:
+            raise HarnessError(f"snapshot {name} repository does not match workspace configuration")
+        state = _repo_state(name)
+        if state["dirty"]:
+            raise HarnessError(f"snapshot verify requires a clean repository: {name}")
+        if state["branch"] != expected["branch"]:
+            raise HarnessError(f"snapshot verify requires {name} on {expected['branch']}")
+        actual_digest = _tracked_files_sha256(repository)
+        if actual_digest != expected["tracked_files_sha256"]:
+            raise HarnessError(f"snapshot tracked-file digest differs: {name}")
+        results[name] = {
+            "branch": state["branch"],
+            "revision": state["revision"],
+            "revision_matches_provenance": state["revision"] == expected["revision"],
+            "tracked_files_sha256": actual_digest,
+        }
+    return {
+        "artifact_created": False,
+        "repositories": results,
+        "status": "PASS",
+        "verification": "clean main branch plus git ls-files -s -z SHA-256",
+    }
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -608,37 +590,28 @@ def build_parser() -> argparse.ArgumentParser:
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("doctor")
 
+    setup_parser = commands.add_parser("setup")
+    setup_parser.add_argument("--repo", choices=tuple(REPOSITORY_SELECTORS))
+
     check_parser = commands.add_parser("check")
-    check_parser.add_argument(
-        "level", choices=("quick", "contract", "candidate", "functional")
-    )
-    check_parser.add_argument("--repo", choices=REPOSITORIES)
-    check_parser.add_argument("--task")
-    check_parser.add_argument("--live", action="store_true")
-    check_parser.add_argument(
-        "--scope", choices=("scenarios", "chat", "hitl", "adaptive", "ui", "all")
-    )
+    check_parser.add_argument("level", choices=("quick", "contract"))
+    check_parser.add_argument("--repo", choices=tuple(REPOSITORY_SELECTORS), required=True)
 
-    uat_parser = commands.add_parser("uat")
-    uat_parser.add_argument("action", choices=UAT_ACTIONS)
-
-    clean_parser = commands.add_parser("clean")
-    clean_mode = clean_parser.add_mutually_exclusive_group(required=True)
-    clean_mode.add_argument("--dry-run", action="store_true")
-    clean_mode.add_argument("--apply", action="store_true")
-
+    snapshot_parser = commands.add_parser("snapshot")
+    snapshot_commands = snapshot_parser.add_subparsers(dest="snapshot_command", required=True)
+    snapshot_commands.add_parser("verify")
     return parser
 
 
 def dispatch(args: argparse.Namespace) -> dict[str, Any]:
     if args.command == "doctor":
         return doctor()
+    if args.command == "setup":
+        return setup(args.repo)
     if args.command == "check":
-        return check(args.level, args.repo, args.task, args.live, args.scope)
-    if args.command == "uat":
-        return uat(args.action)
-    if args.command == "clean":
-        return clean(apply=args.apply)
+        return check(args.level, args.repo)
+    if args.command == "snapshot" and args.snapshot_command == "verify":
+        return snapshot_verify()
     raise HarnessError("unsupported command")
 
 
@@ -646,8 +619,8 @@ def main(argv: list[str] | None = None) -> int:
     try:
         _emit(dispatch(build_parser().parse_args(argv)))
         return 0
-    except (HarnessError, OSError, subprocess.TimeoutExpired, ValueError, json.JSONDecodeError) as exc:
-        _emit({"status": "FAIL", "error": str(exc)})
+    except (HarnessError, OSError, subprocess.SubprocessError, ValueError) as exc:
+        _emit({"error": str(exc), "status": "FAIL"})
         return 1
 
 

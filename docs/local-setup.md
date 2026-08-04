@@ -1,13 +1,33 @@
 # Local setup
 
-1. Clone this harness and the four product repositories as sibling directories.
-2. Enable the repository check hook once with `git config core.hooksPath .githooks`.
-3. Keep credentials, datasets, runtime state, and generated evidence in the
-   sibling `_local/` and `_artifacts/` directories; never copy them into this
-   repository.
-4. Run `harness/eng.ps1 doctor` before executing a repository check or UAT.
-5. Use the product repository's own CI and release process for merges, tags, and
-   deployment. The harness does not perform production certification.
+Install Git 2.40 or newer, Python 3.11, Node.js 22.22 or newer (before 23), npm, and `uv` once on the
+workstation. `doctor` reports a precise missing or incompatible prerequisite.
+If Python 3.11 is not the `python` on `PATH`, set `CUSTOMS_PYTHON` to its
+executable before running `eng.ps1`.
 
-The UAT commands require separately provisioned local credentials and data. A
-missing local secret is an expected setup error, not a reason to add it to Git.
+Clone the harness and four product repositories as direct siblings. Do not add
+the historical Data Platform `upstream`; it is personal provenance, not a team
+workspace requirement.
+
+Run this sequence after a fresh clone or a lock-file change:
+
+```powershell
+.\harness\eng.ps1 doctor
+.\harness\eng.ps1 snapshot verify
+.\harness\eng.ps1 setup
+```
+
+Use `setup --repo <frontend|backend|ai_agent|data_platform>` when only one
+repository changed. Then run only the affected repository's `quick` or
+`contract` check. Setup synchronizes dependencies in place and checks never
+install, delete, or clean caches. The harness does not create a virtual
+environment outside a product repository, start containers, or handle
+credentials.
+
+Keep credentials, real datasets, runtime state, and non-reproducible evidence
+under the sibling `_local/` or `_artifacts/` directories. Never copy them into
+any of the five Git repositories.
+
+Authorized runtime exercises use a separately delivered operator package. It
+does not belong in this repository and must not be added as a Git remote,
+submodule, or source copy.

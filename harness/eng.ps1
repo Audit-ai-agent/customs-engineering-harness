@@ -4,45 +4,35 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$EngineeringRoot = Split-Path -Parent $PSScriptRoot
-$PinnedNodeDir = Join-Path $env:LOCALAPPDATA 'CustomsUAT\cache\tools\node\v22.23.1'
-if (Test-Path -LiteralPath (Join-Path $PinnedNodeDir 'node.exe') -PathType Leaf) {
-    $env:PATH = "$PinnedNodeDir;$env:PATH"
-}
-$BundledUv = Join-Path $env:LOCALAPPDATA 'CustomsUAT\cache\tools\uv\v0.11.28\uv.exe'
-if ((Test-Path -LiteralPath $BundledUv -PathType Leaf) -and $null -eq (Get-Command uv -ErrorAction SilentlyContinue)) {
-    $env:PATH = "$(Split-Path -Parent $BundledUv);$env:PATH"
-}
-$PythonCandidates = @(
-    (Join-Path $env:APPDATA 'uv\python\cpython-3.11.15-windows-x86_64-none\python.exe'),
-    (Join-Path $env:APPDATA 'uv\python\cpython-3.11-windows-x86_64-none\python.exe')
-)
+$HarnessRoot = Split-Path -Parent $PSScriptRoot
 
-$Python = $null
-foreach ($Candidate in $PythonCandidates) {
-    if (-not (Test-Path -LiteralPath $Candidate -PathType Leaf)) { continue }
-    $Version = & $Candidate -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')"
-    if ($LASTEXITCODE -eq 0 -and $Version -eq '3.11') {
-        $Python = $Candidate
-        break
+function Test-Python311 {
+    param([Parameter(Mandatory = $true)][string]$Path)
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return $false }
+    $Version = & $Path -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')" 2>$null
+    return $LASTEXITCODE -eq 0 -and $Version -eq '3.11'
+}
+
+$Candidates = @()
+if ($env:CUSTOMS_PYTHON) { $Candidates += $env:CUSTOMS_PYTHON }
+$PathPython = Get-Command python -ErrorAction SilentlyContinue
+if ($null -ne $PathPython) { $Candidates += $PathPython.Source }
+if ($IsWindows) {
+    $UvPythonRoot = Join-Path $env:APPDATA 'uv\python'
+    if (Test-Path -LiteralPath $UvPythonRoot -PathType Container) {
+        $Candidates += Get-ChildItem -LiteralPath $UvPythonRoot -Directory -Filter 'cpython-3.11*' |
+            ForEach-Object { Join-Path $_.FullName 'python.exe' }
     }
 }
 
+$Python = $Candidates | Where-Object { Test-Python311 $_ } | Select-Object -First 1
 if ($null -eq $Python) {
-    $PathPython = Get-Command python -ErrorAction SilentlyContinue
-    if ($null -ne $PathPython) {
-        $Version = & $PathPython.Source -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')"
-        if ($LASTEXITCODE -eq 0 -and $Version -eq '3.11') { $Python = $PathPython.Source }
-    }
-}
-
-if ($null -eq $Python) {
-    throw 'Python 3.11 is required. Install it once; the harness does not create its own environment.'
+    throw 'Python 3.11 is required. Install it, or set CUSTOMS_PYTHON to its executable path.'
 }
 
 $PreviousBytecode = $env:PYTHONDONTWRITEBYTECODE
 $env:PYTHONDONTWRITEBYTECODE = '1'
-Push-Location $EngineeringRoot
+Push-Location $HarnessRoot
 try {
     & $Python -B harness\eng.py @HarnessArgs
     exit $LASTEXITCODE

@@ -1,30 +1,35 @@
-schema_version = "4.0"
-workspace_root = "../"
-artifacts_dir = "../_artifacts/tasks"
-secrets_dir = "../_local/secrets"
+schema_version = "customs-team-workspace/v1"
+workspace_root = ".."
 
 [harness]
-expected_origin = "https://github.com/Audit-ai-agent/customs-engineering-harness.git"
+repository = "Audit-ai-agent/customs-engineering-harness"
+
+[tooling]
+python = "3.11"
+git_minimum = "2.40"
+node_major = 22
+node_minimum = "22.22.0"
 
 [repos.frontend]
-path = "../customs-frontend"
-expected_origin = "https://github.com/Audit-ai-agent/customs-frontend.git"
+directory = "customs-frontend"
+repository = "Audit-ai-agent/customs-frontend"
+runtime = "npm"
 quick = [["npm", "run", "check:quick"]]
 contract = [["npm", "run", "check:contract"]]
 
 [repos.backend]
-path = "../customs-backend"
-expected_origin = "https://github.com/Audit-ai-agent/customs-backend.git"
-quick_sync = ["--extra", "unit"]
-contract_sync = ["--extra", "unit"]
+directory = "customs-backend"
+repository = "Audit-ai-agent/customs-backend"
+runtime = "uv"
+setup = [["uv", "sync", "--locked", "--extra", "unit"]]
 quick = [["python", "tools/check_backend.py", "quick"]]
 contract = [["python", "tools/check_backend.py", "contract"]]
 
 [repos.ai_agent]
-path = "../customs-ai-agent"
-expected_origin = "https://github.com/Audit-ai-agent/customs-ai-agent.git"
-quick_sync = []
-contract_sync = []
+directory = "customs-ai-agent"
+repository = "Audit-ai-agent/customs-ai-agent"
+runtime = "uv"
+setup = [["uv", "sync", "--locked"]]
 quick = [
   ["python", "-m", "ruff", "check", "src", "tests"],
   ["python", "-m", "ruff", "format", "--check", "src", "tests"],
@@ -33,12 +38,10 @@ quick = [
 contract = [["python", "-m", "pytest", "-q", "tests/test_evidence_v3_consumer.py", "tests/service/test_openapi.py"]]
 
 [repos.data_platform]
-path = "../customs-data-platform"
-expected_origin = "https://github.com/Audit-ai-agent/customs-data-platform.git"
-expected_upstream = "https://github.com/vector2967/trade-doc-auditor.git"
-expected_upstream_push = "DISABLED"
-quick_sync = []
-contract_sync = []
+directory = "customs-data-platform"
+repository = "Audit-ai-agent/customs-data-platform"
+runtime = "uv"
+setup = [["uv", "sync", "--locked"]]
 quick = [
   ["python", "-m", "ruff", "check", "law_repository/src", "law_repository/tests", "evals", "tools"],
   ["python", "-m", "mypy"],
