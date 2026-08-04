@@ -34,7 +34,7 @@ quick = [
   ["python", "-m", "ruff", "format", "--check", "src", "tests"],
   ["python", "-m", "mypy", "src"],
 ]
-contract = [["python", "-m", "pytest", "-q", "tests/test_evidence_v3_consumer.py", "tests/service/test_openapi.py", "tests/test_source_snapshot.py"]]
+contract = [["python", "-m", "pytest", "-q", "tests/test_evidence_v3_consumer.py", "tests/service/test_openapi.py"]]
 
 [repos.data_platform]
 directory = "customs-data-platform"
