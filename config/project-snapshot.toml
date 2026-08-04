@@ -1,0 +1,26 @@
+schema_version = "customs-project-snapshot/v1"
+snapshot_id = "TASK-0033-functional-uat"
+
+[repositories.frontend]
+repository = "Audit-ai-agent/customs-frontend"
+remote_url = "https://github.com/Audit-ai-agent/customs-frontend.git"
+branch = "task/task-0033-functional-uat"
+revision = "2adc493c326d841c7fb3e4d702eebfe72a4f0ce3"
+
+[repositories.backend]
+repository = "Audit-ai-agent/customs-backend"
+remote_url = "https://github.com/Audit-ai-agent/customs-backend.git"
+branch = "task/task-0033-functional-uat"
+revision = "ba1836ba5944ae8c18575e97f2643029a9268f1d"
+
+[repositories.ai_agent]
+repository = "Audit-ai-agent/customs-ai-agent"
+remote_url = "https://github.com/Audit-ai-agent/customs-ai-agent.git"
+branch = "task/task-0033-functional-uat"
+revision = "724bba0b02b3c50ae50a01b6565fc70db0986854"
+
+[repositories.data_platform]
+repository = "Audit-ai-agent/customs-data-platform"
+remote_url = "https://github.com/Audit-ai-agent/customs-data-platform.git"
+branch = "task/task-0033-functional-uat"
+revision = "b13e8bf7238a61eb185efcf2e9cd768ad5a908e2"

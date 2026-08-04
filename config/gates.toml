@@ -1,0 +1,35 @@
+schema_version = "3.0"
+
+[levels.inspect]
+code = "L0"
+description = "Git, path, capacity and shallow runtime inspection only"
+permanent_artifact = false
+
+[levels.quick]
+code = "L1"
+description = "One explicit repository; static checks and changed tests"
+repository_required = true
+permanent_artifact = false
+
+[levels.contract]
+code = "L2"
+description = "One provider/consumer boundary and one representative contract check"
+repository_required = true
+task_required = true
+permanent_artifact = true
+
+[levels.candidate]
+code = "L3-CANDIDATE"
+description = "One representative live user journey; not Production certification"
+repository_required = false
+task_required = true
+permanent_artifact = true
+human_approval_required = true
+
+[levels.functional]
+code = "L3-FUNCTIONAL"
+description = "Current-code multi-Case functional UAT; explicitly not Production certification"
+repository_required = false
+task_required = true
+permanent_artifact = true
+human_approval_required = false

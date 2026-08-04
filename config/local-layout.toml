@@ -1,0 +1,24 @@
+schema_version = "2.0"
+
+# Paths in this section are resolved from this harness checkout. The _local tree
+# is local-only and must never become a Git repository or GitHub publication
+# source. _artifacts remains separate because it contains durable evidence.
+[workspace]
+local_root = "../_local"
+artifacts_root = "../_artifacts"
+data = "data"
+state = "state"
+worktrees = "worktrees"
+transfers = "transfers"
+secrets = "secrets"
+
+# These templates are expanded from the child-process environment supplied by
+# the harness. They deliberately live outside the repository so dependency and
+# model caches cannot pollute source trees or sealed evidence.
+[external]
+cache_root = "${LOCALAPPDATA}/CustomsUAT/cache"
+tools_root = "${LOCALAPPDATA}/CustomsUAT/cache/tools"
+scratch_root = "${TEMP}/customs-uat/r"
+
+[retention]
+failed_scratch_ttl_hours = 24

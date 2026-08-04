@@ -1,0 +1,27 @@
+# Runtime, evidence, and source staging live outside this shared repository.
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+node_modules/
+build/
+dist/
+coverage/
+htmlcov/
+test-results/
+
+# Never track local secrets, artifacts, or copied raw data.
+*.env
+.env.*
+!.env.example
+secrets/
+tmp/
+_local/
+_artifacts/
+*.bundle
+*.bundle.*
+
+# Verified standalone tools are bootstrapped outside this repository.
+.tools/

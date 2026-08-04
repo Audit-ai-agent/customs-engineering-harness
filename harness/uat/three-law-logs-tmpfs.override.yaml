@@ -1,0 +1,7 @@
+# Personal LOCAL UAT override.  The product-owned Data Compose file remains
+# untouched.  Neo4j logs are diagnostic runtime output and must not create an
+# anonymous Docker volume on every UAT execution.
+services:
+  neo4j:
+    tmpfs:
+      - /logs:size=64m,mode=1777

@@ -1,0 +1,10 @@
+[project]
+name = "customs-engineering-harness"
+version = "0.2.0"
+description = "Small shared coordinator for the four customs product repositories"
+requires-python = ">=3.11,<3.12"
+dependencies = []
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100

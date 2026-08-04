@@ -1,0 +1,2 @@
+#!/bin/sh
+python -B -m unittest discover -s harness/tests -q
