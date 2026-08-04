@@ -20,12 +20,14 @@ class HarnessTests(unittest.TestCase):
         self.assertEqual(parser.parse_args(["doctor"]).command, "doctor")
         self.assertIsNone(parser.parse_args(["setup"]).repo)
         parsed = parser.parse_args(["check", "quick", "--repo", "backend"])
-        self.assertEqual((parsed.command, parsed.level, parsed.repo), ("check", "quick", "backend"))
+        self.assertEqual((parsed.command, parsed.level, parsed.repo, parsed.cross), ("check", "quick", "backend", False))
         parsed = parser.parse_args(["check", "quick", "--repo", "customs-data-platform"])
         self.assertEqual(
-            (parsed.command, parsed.level, parsed.repo),
-            ("check", "quick", "customs-data-platform"),
+            (parsed.command, parsed.level, parsed.repo, parsed.cross),
+            ("check", "quick", "customs-data-platform", False),
         )
+        parsed = parser.parse_args(["check", "contract", "--repo", "frontend", "--cross"])
+        self.assertEqual((parsed.command, parsed.level, parsed.repo, parsed.cross), ("check", "contract", "frontend", True))
         parsed = parser.parse_args(["snapshot", "verify"])
         self.assertEqual((parsed.command, parsed.snapshot_command), ("snapshot", "verify"))
         with redirect_stderr(StringIO()), self.assertRaises(SystemExit):
@@ -68,6 +70,7 @@ class HarnessTests(unittest.TestCase):
                 "git_minimum": "2.40",
                 "node_major": 22,
                 "node_minimum": "22.22.0",
+                "npm_minimum": "10.9.8",
             }
         }
 
@@ -96,6 +99,19 @@ class HarnessTests(unittest.TestCase):
             ),
         ):
             with self.assertRaisesRegex(eng.HarnessError, "22.22.0"):
+                eng._tool_versions()
+
+        with (
+            patch.object(eng, "_workspace_config", return_value=tooling),
+            patch.object(
+                eng,
+                "_first_line",
+                side_effect=lambda command: "10.9.7"
+                if command == ("npm", "--version")
+                else versions(command),
+            ),
+        ):
+            with self.assertRaisesRegex(eng.HarnessError, "npm 10.9.8"):
                 eng._tool_versions()
 
     def test_snapshot_config_uses_main_and_inventory_digests(self) -> None:
@@ -136,11 +152,60 @@ class HarnessTests(unittest.TestCase):
         self.assertNotIn("rmtree", implementation)
         self.assertNotIn("unlink", implementation)
 
+    def test_cross_contract_is_limited_to_contract_checks(self) -> None:
+        with self.assertRaisesRegex(eng.HarnessError, "only for a contract"):
+            eng.check("quick", "frontend", cross=True)
+
+    def test_cross_contract_requires_an_explicit_provider_mapping(self) -> None:
+        with self.assertRaisesRegex(eng.HarnessError, "no configured cross-repository"):
+            eng._cross_contract_files("data_platform", Path("."))
+
+    def test_cross_contract_compares_exact_consumer_and_provider_bytes(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            consumer = root / "consumer"
+            provider = root / "provider"
+            (consumer / "contracts").mkdir(parents=True)
+            (provider / "schemas").mkdir(parents=True)
+            (consumer / "contracts" / "api.json").write_bytes(b'{"version":3}\n')
+            (provider / "schemas" / "api.json").write_bytes(b'{"version":3}\n')
+            definitions = {
+                "frontend": {
+                    "cross_contract": {
+                        "files": [{
+                            "provider": "backend",
+                            "provider_path": "schemas/api.json",
+                            "consumer_path": "contracts/api.json",
+                        }]
+                    }
+                }
+            }
+            with (
+                patch.object(eng, "_definitions", return_value=definitions),
+                patch.object(eng, "_repo", side_effect=lambda name: provider if name == "backend" else consumer),
+                patch.object(eng, "_assert_repository_origin", return_value="audit-ai-agent/customs-backend"),
+            ):
+                result = eng._cross_contract_files("frontend", consumer)
+                self.assertEqual(result[0]["provider"], "backend")
+                (consumer / "contracts" / "api.json").write_bytes(b'{"version":4}\n')
+                with self.assertRaisesRegex(eng.HarnessError, "byte drift"):
+                    eng._cross_contract_files("frontend", consumer)
+
     def test_frontend_setup_uses_the_checked_in_lock_without_ci_cleanup(self) -> None:
         implementation = inspect.getsource(eng._setup_frontend)
         self.assertIn('"--package-lock=true"', implementation)
         self.assertNotIn('"--package-lock=false"', implementation)
         self.assertNotIn('["npm", "ci"', implementation)
+
+    def test_data_default_setup_does_not_pull_store_or_model_extras(self) -> None:
+        setup = eng._definitions()["data_platform"]["setup"]
+        self.assertEqual(setup, [["uv", "sync", "--locked", "--group", "dev"]])
+        for command in eng._definitions()["data_platform"]["quick"] + eng._definitions()["data_platform"]["contract"]:
+            self.assertIn("--no-sync", command)
+
+    def test_agent_quick_check_includes_its_small_unit_suite(self) -> None:
+        quick = eng._definitions()["ai_agent"]["quick"]
+        self.assertIn(["python", "-m", "pytest", "-q"], quick)
 
     def test_tracked_inventory_digest_is_raw_git_output(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

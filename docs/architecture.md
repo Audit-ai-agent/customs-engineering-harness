@@ -9,9 +9,13 @@
 
 The harness has one responsibility: validate the sibling workspace and invoke
 repository-owned setup and checks. It does not import product modules, define
-cross-repository runtime wiring, own releases, or prescribe a deployment path.
+cross-repository runtime wiring, or prescribe a deployment path.
+
+An explicit `check contract --cross` compares configured provider/consumer
+schema bytes only. It does not compare commits, create an approval record, or
+serve as a release gate.
 
 `config/project-snapshot.toml` records a known `main` composition. Its stable
-gate is the SHA-256 of `git ls-files -s -z`; the recorded commit is provenance
+gate is the SHA-256 of `git ls-files -s -z`; the recorded commit is a reference
 only. A maintainer refreshes both values after a deliberately merged component
 baseline changes.

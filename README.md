@@ -1,6 +1,6 @@
 # Customs Engineering Harness
 
-This is the small shared local coordinator for four independently released
+This is the small shared local coordinator for four independent
 Customs product repositories. It contains no product code, service runtime,
 deployment definition, copied data, or secret.
 
@@ -18,9 +18,12 @@ project/
   customs-data-platform/
 ```
 
-`_local/` is optional, outside Git, and is the only location for a developer's
-credentials, real data, and runtime state. `_artifacts/` is also outside Git.
-Neither directory is read or created by the everyday harness commands.
+`_local/` is optional, outside Git, and holds generated local service state,
+Law-API input, and real local data. `_artifacts/` is also outside Git. A
+personal Claude key is never stored or read by the harness: the UAT operator
+supplies it only to the current Agent process through the approved local secret
+mechanism. Neither directory is read or created by the everyday harness
+commands.
 
 ## Everyday commands
 
@@ -37,8 +40,10 @@ keeps a local lock marker in the repository's ignored dependency directory.
 `check` only verifies that marker and runs the owning repository's existing
 command; it never installs or removes dependencies.
 
-Approval-only local runtime orchestration is intentionally outside this shared
-repository. It is supplied to authorized operators separately, along with its
-own secret and data inputs, and is not a harness command.
+The harness deliberately has no runtime command.  Each product repository
+owns its own local start command; [local setup](docs/local-setup.md) gives the
+small, documented order for the ordinary fixture flow and the explicit
+functional-UAT flow.  No separate runtime bundle is required.
 
-See [local setup](docs/local-setup.md) and [architecture](docs/architecture.md).
+See [local setup](docs/local-setup.md), [runtime profiles](docs/runtime-profiles.md),
+and [architecture](docs/architecture.md).

@@ -287,12 +287,17 @@ def _tool_versions() -> dict[str, str]:
     if not isinstance(node_major, int) or node_major < 1:
         raise HarnessError("tooling node_major is invalid")
     node_minimum = _required_string(config, "node_minimum", "tooling node_minimum")
+    npm_minimum = _required_string(config, "npm_minimum", "tooling npm_minimum")
     minimum_node_match = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)", node_minimum)
     if minimum_node_match is None:
         raise HarnessError("tooling node_minimum is invalid")
     minimum_node = tuple(int(value) for value in minimum_node_match.groups())
     if minimum_node[0] != node_major:
         raise HarnessError("tooling Node major and minimum are inconsistent")
+    npm_minimum_match = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)", npm_minimum)
+    if npm_minimum_match is None:
+        raise HarnessError("tooling npm_minimum is invalid")
+    minimum_npm = tuple(int(value) for value in npm_minimum_match.groups())
 
     python_version = f"{sys.version_info.major}.{sys.version_info.minor}"
     if python_version != expected_python:
@@ -318,6 +323,10 @@ def _tool_versions() -> dict[str, str]:
     npm_version = _first_line(("npm", "--version"))
     if npm_version is None:
         raise HarnessError("npm is required")
+    npm_match = re.fullmatch(r"v?(\d+)\.(\d+)\.(\d+)", npm_version)
+    actual_npm = tuple(int(value) for value in npm_match.groups()) if npm_match else None
+    if actual_npm is None or actual_npm < minimum_npm:
+        raise HarnessError(f"npm {npm_minimum} or newer is required")
     uv_version = _first_line(("uv", "--version"))
     if uv_version is None:
         raise HarnessError("uv is required for Python repository setup")
@@ -369,7 +378,9 @@ def _setup_fingerprint(repository: Path, runtime: str) -> dict[str, str]:
     lock = repository / lock_name
     if not lock.is_file():
         raise HarnessError(f"{repository.name} is missing {lock_name}")
-    return {"lock_file": lock_name, "lock_sha256": _sha256(lock), "schema_version": "1"}
+    # Bump this whenever setup semantics change.  The marker then cannot claim
+    # an older dependency selection is ready for a newer check configuration.
+    return {"lock_file": lock_name, "lock_sha256": _sha256(lock), "schema_version": "2"}
 
 
 def _read_marker(repository: Path, runtime: str) -> dict[str, str] | None:
@@ -486,28 +497,91 @@ def _check_environment(name: str, repository: Path) -> Mapping[str, str]:
     return environment
 
 
-def check(level: str, name: str | None) -> dict[str, Any]:
+def _relative_contract_path(value: object, label: str) -> Path:
+    if not isinstance(value, str) or not value:
+        raise HarnessError(f"{label} is invalid")
+    candidate = Path(value)
+    if candidate.is_absolute() or ".." in candidate.parts or candidate.name in {".", ".."}:
+        raise HarnessError(f"{label} is invalid")
+    return candidate
+
+
+def _cross_contract_files(name: str, repository: Path) -> list[dict[str, str]]:
+    """Compare only configured public contract bytes across sibling repos.
+
+    This is intentionally opt-in.  A regular local contract check stays local;
+    ``--cross`` is used when a provider API/schema changes and checks the exact
+    bytes retained by its consumer.  It has no release, commit, signature, or
+    runtime provenance meaning.
+    """
+
+    raw = _definitions()[name].get("cross_contract")
+    if not isinstance(raw, dict) or not isinstance(raw.get("files"), list) or not raw["files"]:
+        raise HarnessError(f"{name} has no configured cross-repository contract check")
+    results: list[dict[str, str]] = []
+    for index, item in enumerate(raw["files"]):
+        if not isinstance(item, dict):
+            raise HarnessError(f"{name} cross-repository contract configuration is invalid")
+        provider = item.get("provider")
+        if not isinstance(provider, str) or provider not in REPOSITORIES or provider == name:
+            raise HarnessError(f"{name} cross-repository contract provider is invalid")
+        provider_path = _relative_contract_path(
+            item.get("provider_path"), f"{name} cross-repository provider path"
+        )
+        consumer_path = _relative_contract_path(
+            item.get("consumer_path"), f"{name} cross-repository consumer path"
+        )
+        provider_repository = _repo(provider)
+        _assert_repository_origin(provider, provider_repository)
+        provider_file = provider_repository / provider_path
+        consumer_file = repository / consumer_path
+        if not provider_file.is_file() or not consumer_file.is_file():
+            raise HarnessError(f"cross-repository contract file is unavailable: {name}[{index}]")
+        provider_digest = _sha256(provider_file)
+        consumer_digest = _sha256(consumer_file)
+        if provider_digest != consumer_digest:
+            raise HarnessError(f"cross-repository contract byte drift: {name}[{index}]")
+        results.append(
+            {
+                "consumer_file": str(consumer_file),
+                "provider": provider,
+                "provider_file": str(provider_file),
+                "sha256": provider_digest,
+            }
+        )
+    return results
+
+
+def check(level: str, name: str | None, *, cross: bool = False) -> dict[str, Any]:
     if level not in {"quick", "contract"}:
         raise HarnessError("check supports only quick and contract")
+    if cross and level != "contract":
+        raise HarnessError("--cross is available only for a contract check")
     selected = _repository_name(name)
     if selected is None:
         raise HarnessError(f"{level} requires one explicit --repo")
     repository = _repo(selected)
     _assert_repository_origin(selected, repository)
     environment = _check_environment(selected, repository)
+    cross_result: list[dict[str, str]] | None = None
+    if cross:
+        cross_result = _cross_contract_files(selected, repository)
     results: list[dict[str, Any]] = []
     for command in _configured_commands(selected, level):
         result = _run(command, cwd=repository, env=environment)
         results.append(result)
         if result["exit_code"] != 0:
             raise HarnessError(f"{selected} {level} check failed")
-    return {
+    response: dict[str, Any] = {
         "artifact_created": False,
         "level": "L1" if level == "quick" else "L2",
         "repository": selected,
         "results": results,
         "status": "PASS",
     }
+    if cross_result is not None:
+        response["cross_repository_contracts"] = cross_result
+    return response
 
 
 def _tracked_files_sha256(repository: Path) -> str:
@@ -596,6 +670,7 @@ def build_parser() -> argparse.ArgumentParser:
     check_parser = commands.add_parser("check")
     check_parser.add_argument("level", choices=("quick", "contract"))
     check_parser.add_argument("--repo", choices=tuple(REPOSITORY_SELECTORS), required=True)
+    check_parser.add_argument("--cross", action="store_true")
 
     snapshot_parser = commands.add_parser("snapshot")
     snapshot_commands = snapshot_parser.add_subparsers(dest="snapshot_command", required=True)
@@ -609,7 +684,7 @@ def dispatch(args: argparse.Namespace) -> dict[str, Any]:
     if args.command == "setup":
         return setup(args.repo)
     if args.command == "check":
-        return check(args.level, args.repo)
+        return check(args.level, args.repo, cross=args.cross)
     if args.command == "snapshot" and args.snapshot_command == "verify":
         return snapshot_verify()
     raise HarnessError("unsupported command")
