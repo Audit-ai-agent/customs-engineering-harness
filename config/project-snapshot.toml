@@ -1,26 +1,30 @@
-schema_version = "customs-project-snapshot/v1"
-snapshot_id = "TASK-0033-functional-uat"
+schema_version = "customs-project-snapshot/v2"
+snapshot_id = "main-baseline-2026-08-04"
+inventory = "git ls-files -s -z"
+digest_algorithm = "sha256"
 
+# revision is provenance only.  Verification gates on a clean main branch and
+# the tracked-file inventory digest, so an equivalent merge commit still works.
 [repositories.frontend]
 repository = "Audit-ai-agent/customs-frontend"
-remote_url = "https://github.com/Audit-ai-agent/customs-frontend.git"
-branch = "task/task-0033-functional-uat"
-revision = "134d36b794b7dbf482e31e2566e4e896d722e9d1"
+branch = "main"
+revision = "c3d050769c7fb383c517428d279eb8a1bf8dd581"
+tracked_files_sha256 = "a9e56998899bdc9e99968b4e1bf4bc65539795b5663180a65d1e6a031f1e97d4"
 
 [repositories.backend]
 repository = "Audit-ai-agent/customs-backend"
-remote_url = "https://github.com/Audit-ai-agent/customs-backend.git"
-branch = "task/task-0033-functional-uat"
-revision = "ba1836ba5944ae8c18575e97f2643029a9268f1d"
+branch = "main"
+revision = "bc1d09d93cbc5e435bf95636d241b7e9d02e5792"
+tracked_files_sha256 = "98a713e11cf79ff089c7b4cc753e6eb45249653df6c555aa4179f0fce0b34f4b"
 
 [repositories.ai_agent]
 repository = "Audit-ai-agent/customs-ai-agent"
-remote_url = "https://github.com/Audit-ai-agent/customs-ai-agent.git"
-branch = "task/task-0033-functional-uat"
-revision = "c4075b435a63e1d1054c6cf923dd3cfa71ff1368"
+branch = "main"
+revision = "54154f564ece5c25dc0bf7675c7198f0dddc371f"
+tracked_files_sha256 = "802b74d90b247bf52089d546226d96e5f34ce169da5f3b3dc358c24eee2b3640"
 
 [repositories.data_platform]
 repository = "Audit-ai-agent/customs-data-platform"
-remote_url = "https://github.com/Audit-ai-agent/customs-data-platform.git"
-branch = "task/task-0033-functional-uat"
-revision = "b13e8bf7238a61eb185efcf2e9cd768ad5a908e2"
+branch = "main"
+revision = "0354233bc2bb3b709f708fdb8e6e9d9805fd1e29"
+tracked_files_sha256 = "aaa8ce263f98213ccbfc257fdce4acf4b4379f822d10c05a2a7126344278ca98"

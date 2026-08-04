@@ -1,89 +1,131 @@
 from __future__ import annotations
 
-import importlib.util
+import hashlib
+import inspect
+import subprocess
+import tempfile
 import unittest
+from contextlib import redirect_stderr
+from io import StringIO
 from pathlib import Path
+from unittest.mock import patch
+
+from harness import eng
 
 
-MODULE_PATH = Path(__file__).resolve().parents[1] / "eng.py"
-SPEC = importlib.util.spec_from_file_location("core_eng", MODULE_PATH)
-assert SPEC is not None and SPEC.loader is not None
-eng = importlib.util.module_from_spec(SPEC)
-SPEC.loader.exec_module(eng)
-
-
-class CoreHarnessTests(unittest.TestCase):
-    def test_public_command_surface_is_small(self) -> None:
+class HarnessTests(unittest.TestCase):
+    def test_public_command_surface_is_limited(self) -> None:
         parser = eng.build_parser()
-        samples = (
-            ["doctor"],
-            ["check", "quick", "--repo", "ai_agent"],
-            ["check", "contract", "--repo", "backend", "--task", "TASK-9999"],
-            ["check", "candidate", "--task", "TASK-9999", "--live"],
-            [
-                "check", "functional", "--task", "TASK-0033", "--live",
-                "--scope", "all",
-            ],
-            ["uat", "smoke"],
-            ["uat", "candidate"],
-            ["uat", "restart"],
-            ["uat", "hibernate"],
-            ["clean", "--dry-run"],
-        )
-        for argv in samples:
-            with self.subTest(argv=argv):
-                self.assertIsNotNone(parser.parse_args(argv))
-
-    def test_only_contract_and_candidate_persist_results(self) -> None:
-        gates = eng._load_toml("gates.toml")["levels"]
-        self.assertFalse(gates["inspect"]["permanent_artifact"])
-        self.assertFalse(gates["quick"]["permanent_artifact"])
-        self.assertTrue(gates["contract"]["permanent_artifact"])
-        self.assertTrue(gates["candidate"]["permanent_artifact"])
-        self.assertTrue(gates["functional"]["permanent_artifact"])
-        self.assertNotIn("release", gates)
-
-    def test_shared_harness_origin_is_configured(self) -> None:
+        self.assertEqual(parser.parse_args(["doctor"]).command, "doctor")
+        self.assertIsNone(parser.parse_args(["setup"]).repo)
+        parsed = parser.parse_args(["check", "quick", "--repo", "backend"])
+        self.assertEqual((parsed.command, parsed.level, parsed.repo), ("check", "quick", "backend"))
+        parsed = parser.parse_args(["check", "quick", "--repo", "customs-data-platform"])
         self.assertEqual(
-            eng._expected_harness_origin(),
-            "https://github.com/Audit-ai-agent/customs-engineering-harness.git",
+            (parsed.command, parsed.level, parsed.repo),
+            ("check", "quick", "customs-data-platform"),
         )
+        parsed = parser.parse_args(["snapshot", "verify"])
+        self.assertEqual((parsed.command, parsed.snapshot_command), ("snapshot", "verify"))
+        with redirect_stderr(StringIO()), self.assertRaises(SystemExit):
+            parser.parse_args(["uat", "smoke"])
+        with redirect_stderr(StringIO()), self.assertRaises(SystemExit):
+            parser.parse_args(["check", "candidate", "--repo", "backend"])
 
-    def test_local_only_commands_are_not_exposed(self) -> None:
-        parser = eng.build_parser()
-        for argv in (
-            ["task", "start", "TASK-9999", "--title", "sample"],
-            ["bundle", "verify"],
-            ["knowledge", "select", "--id", "sample"],
+    def test_normalizes_repository_selectors(self) -> None:
+        self.assertEqual(eng._repository_name("data_platform"), "data_platform")
+        self.assertEqual(eng._repository_name("customs-data-platform"), "data_platform")
+        self.assertIsNone(eng._repository_name(None))
+        with self.assertRaises(eng.HarnessError):
+            eng._repository_name("unrelated-repository")
+
+    def test_normalizes_https_and_ssh_origins(self) -> None:
+        expected = "audit-ai-agent/customs-backend"
+        self.assertEqual(
+            eng.normalize_github_origin("https://github.com/Audit-ai-agent/customs-backend.git"), expected
+        )
+        self.assertEqual(
+            eng.normalize_github_origin("git@github.com:Audit-ai-agent/customs-backend.git"), expected
+        )
+        self.assertEqual(
+            eng.normalize_github_origin("ssh://git@github.com/Audit-ai-agent/customs-backend"), expected
+        )
+        with self.assertRaises(eng.HarnessError):
+            eng.normalize_github_origin("https://example.invalid/Audit-ai-agent/customs-backend.git")
+        with self.assertRaises(eng.HarnessError):
+            eng.normalize_github_origin("https://token@github.com/Audit-ai-agent/customs-backend.git")
+
+    def test_snapshot_config_has_no_personal_upstream_requirement(self) -> None:
+        config = eng._workspace_config()
+        self.assertNotIn("expected_upstream", config["repos"]["data_platform"])
+        self.assertNotIn("expected_upstream_push", config["repos"]["data_platform"])
+
+    def test_snapshot_config_uses_main_and_inventory_digests(self) -> None:
+        snapshot = eng._load_toml("project-snapshot.toml")
+        self.assertEqual(snapshot["schema_version"], "customs-project-snapshot/v2")
+        self.assertEqual(snapshot["inventory"], "git ls-files -s -z")
+        for record in snapshot["repositories"].values():
+            self.assertEqual(record["branch"], "main")
+            self.assertRegex(record["tracked_files_sha256"], r"^[0-9a-f]{64}$")
+
+    def test_snapshot_treats_commit_as_provenance_not_the_gate(self) -> None:
+        identity = "audit-ai-agent/customs-backend"
+        records = {
+            name: {
+                "branch": "main",
+                "repository": identity,
+                "revision": "a" * 40,
+                "tracked_files_sha256": "b" * 64,
+            }
+            for name in eng.REPOSITORIES
+        }
+        definitions = {name: {"repository": "Audit-ai-agent/customs-backend"} for name in eng.REPOSITORIES}
+        state = {"branch": "main", "dirty": False, "revision": "c" * 40}
+        with (
+            patch.object(eng, "_snapshot_definitions", return_value=records),
+            patch.object(eng, "_definitions", return_value=definitions),
+            patch.object(eng, "_repo", return_value=Path(".")),
+            patch.object(eng, "_repo_state", return_value=state),
+            patch.object(eng, "_tracked_files_sha256", return_value="b" * 64),
         ):
-            with self.subTest(argv=argv), self.assertRaises(SystemExit):
-                parser.parse_args(argv)
+            result = eng.snapshot_verify()
+        self.assertEqual(result["status"], "PASS")
+        self.assertFalse(result["repositories"]["frontend"]["revision_matches_provenance"])
 
-    def test_powershell_launcher_has_no_isolated_environment(self) -> None:
-        launcher = (eng.ENGINEERING_ROOT / "harness" / "eng.ps1").read_text(encoding="utf-8")
-        self.assertNotIn("uv run", launcher)
-        self.assertNotIn("--isolated", launcher)
+    def test_check_never_installs_or_cleans_dependencies(self) -> None:
+        implementation = inspect.getsource(eng.check)
+        self.assertNotIn("_setup_", implementation)
+        self.assertNotIn("rmtree", implementation)
+        self.assertNotIn("unlink", implementation)
 
-    def test_removed_certification_commands_are_not_exposed(self) -> None:
-        parser = eng.build_parser()
-        for argv in (["check", "release"], ["uat", "full"], ["uat", "scenario-suite"]):
-            with self.subTest(argv=argv), self.assertRaises(SystemExit):
-                parser.parse_args(argv)
+    def test_frontend_setup_uses_the_checked_in_lock_without_ci_cleanup(self) -> None:
+        implementation = inspect.getsource(eng._setup_frontend)
+        self.assertIn('"--package-lock=true"', implementation)
+        self.assertNotIn('"--package-lock=false"', implementation)
+        self.assertNotIn('["npm", "ci"', implementation)
 
-    def test_candidate_is_one_live_journey(self) -> None:
-        source = (eng.ENGINEERING_ROOT / "harness" / "eng.py").read_text(encoding="utf-8")
-        self.assertIn('uat_result = uat("candidate")', source)
-        self.assertIn('"journey_count": 1', source)
-        self.assertNotIn('uat("full")', source)
-        self.assertNotIn('"scenario-suite"', source)
+    def test_tracked_inventory_digest_is_raw_git_output(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            repository = Path(directory)
+            subprocess.run(["git", "init", "-q"], cwd=repository, check=True)
+            (repository / "tracked.txt").write_text("hello\n", encoding="utf-8")
+            subprocess.run(["git", "add", "tracked.txt"], cwd=repository, check=True)
+            expected = subprocess.check_output(
+                ["git", "ls-files", "-s", "-z"], cwd=repository
+            )
+            self.assertEqual(eng._tracked_files_sha256(repository), hashlib.sha256(expected).hexdigest())
 
-    def test_bootstrap_scripts_discover_the_shared_harness_dynamically(self) -> None:
-        for name in ("bootstrap-node.ps1", "bootstrap-uv.ps1"):
-            source = (eng.ENGINEERING_ROOT / "harness" / name).read_text(encoding="utf-8")
-            with self.subTest(name=name):
-                self.assertIn("$HarnessDirectory", source)
-                self.assertNotIn("'_engineering'", source)
-                self.assertNotIn("'AGENTS.md'", source)
+    def test_removed_runtime_files_are_not_tracked(self) -> None:
+        tracked = subprocess.check_output(
+            ["git", "ls-files"], cwd=eng.HARNESS_ROOT, text=True, encoding="utf-8"
+        ).splitlines()
+        forbidden = ("functional_uat", "local_user_uat", "tool_cache", "bootstrap-", "harness/uat/")
+        existing = [
+            path
+            for path in tracked
+            if any(item in path for item in forbidden) and (eng.HARNESS_ROOT / path).exists()
+        ]
+        self.assertFalse(existing)
 
 
 if __name__ == "__main__":

@@ -1,12 +1,13 @@
 # Customs Engineering Harness
 
-`customs-engineering-harness` coordinates local checks and bounded UAT for the
-four independent Customs product repositories. It owns no product code and does
-not use Git submodules.
+This is the small shared local coordinator for four independently released
+Customs product repositories. It contains no product code, service runtime,
+deployment definition, copied data, or secret.
 
-## Workspace layout
+## Workspace
 
-Clone the five repositories as siblings under one directory:
+Clone all five repositories as siblings. HTTPS and SSH GitHub clone URLs are
+both supported; each `origin` must identify the configured organization repo.
 
 ```text
 project/
@@ -17,20 +18,27 @@ project/
   customs-data-platform/
 ```
 
-The optional `_local/` and `_artifacts/` siblings stay outside Git. `_local/`
-holds data, credentials, and runtime state; `_artifacts/` holds local evidence.
-Neither is a publication source.
+`_local/` is optional, outside Git, and is the only location for a developer's
+credentials, real data, and runtime state. `_artifacts/` is also outside Git.
+Neither directory is read or created by the everyday harness commands.
 
-## Commands
+## Everyday commands
 
 ```powershell
 .\harness\eng.ps1 doctor
-.\harness\eng.ps1 check quick --repo ai_agent
-.\harness\eng.ps1 check contract --repo backend --task TASK-0033
-.\harness\eng.ps1 uat smoke
+.\harness\eng.ps1 snapshot verify
+.\harness\eng.ps1 setup --repo backend
+.\harness\eng.ps1 check quick --repo backend
+.\harness\eng.ps1 check contract --repo backend
 ```
 
-`doctor` validates the expected organization remotes and sibling layout.
-Product repositories own their code, API contracts, and CI; this harness only
-coordinates their existing commands. See [local setup](docs/local-setup.md) and
-[architecture](docs/architecture.md).
+`setup` is the only command that installs or synchronizes dependencies. It
+keeps a local lock marker in the repository's ignored dependency directory.
+`check` only verifies that marker and runs the owning repository's existing
+command; it never installs or removes dependencies.
+
+Approval-only local runtime orchestration is intentionally outside this shared
+repository. It is supplied to authorized operators separately, along with its
+own secret and data inputs, and is not a harness command.
+
+See [local setup](docs/local-setup.md) and [architecture](docs/architecture.md).
