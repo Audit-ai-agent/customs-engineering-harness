@@ -286,6 +286,13 @@ def _tool_versions() -> dict[str, str]:
     node_major = config.get("node_major")
     if not isinstance(node_major, int) or node_major < 1:
         raise HarnessError("tooling node_major is invalid")
+    node_minimum = _required_string(config, "node_minimum", "tooling node_minimum")
+    minimum_node_match = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)", node_minimum)
+    if minimum_node_match is None:
+        raise HarnessError("tooling node_minimum is invalid")
+    minimum_node = tuple(int(value) for value in minimum_node_match.groups())
+    if minimum_node[0] != node_major:
+        raise HarnessError("tooling Node major and minimum are inconsistent")
 
     python_version = f"{sys.version_info.major}.{sys.version_info.minor}"
     if python_version != expected_python:
@@ -305,8 +312,9 @@ def _tool_versions() -> dict[str, str]:
 
     node_version = _first_line(("node", "--version"))
     node_match = re.fullmatch(r"v?(\d+)\.(\d+)\.(\d+)", node_version or "")
-    if node_match is None or int(node_match.group(1)) != node_major:
-        raise HarnessError(f"Node.js {node_major}.x is required")
+    actual_node = tuple(int(value) for value in node_match.groups()) if node_match else None
+    if actual_node is None or actual_node[0] != node_major or actual_node < minimum_node:
+        raise HarnessError(f"Node.js {node_minimum} or newer within {node_major}.x is required")
     npm_version = _first_line(("npm", "--version"))
     if npm_version is None:
         raise HarnessError("npm is required")

@@ -8,6 +8,7 @@ repository = "Audit-ai-agent/customs-engineering-harness"
 python = "3.11"
 git_minimum = "2.40"
 node_major = 22
+node_minimum = "22.22.0"
 
 [repos.frontend]
 directory = "customs-frontend"

@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import inspect
 import subprocess
+import sys
 import tempfile
 import unittest
 from contextlib import redirect_stderr
@@ -59,6 +60,43 @@ class HarnessTests(unittest.TestCase):
         config = eng._workspace_config()
         self.assertNotIn("expected_upstream", config["repos"]["data_platform"])
         self.assertNotIn("expected_upstream_push", config["repos"]["data_platform"])
+
+    def test_tooling_rejects_node_below_the_shared_minimum(self) -> None:
+        tooling = {
+            "tooling": {
+                "python": f"{sys.version_info.major}.{sys.version_info.minor}",
+                "git_minimum": "2.40",
+                "node_major": 22,
+                "node_minimum": "22.22.0",
+            }
+        }
+
+        def versions(command: tuple[str, ...]) -> str:
+            return {
+                ("git", "--version"): "git version 2.49.0",
+                ("node", "--version"): "v22.23.1",
+                ("npm", "--version"): "10.9.8",
+                ("uv", "--version"): "uv 0.11.28",
+            }[command]
+
+        with (
+            patch.object(eng, "_workspace_config", return_value=tooling),
+            patch.object(eng, "_first_line", side_effect=versions),
+        ):
+            self.assertEqual(eng._tool_versions()["node"], "v22.23.1")
+
+        with (
+            patch.object(eng, "_workspace_config", return_value=tooling),
+            patch.object(
+                eng,
+                "_first_line",
+                side_effect=lambda command: "v22.15.0"
+                if command == ("node", "--version")
+                else versions(command),
+            ),
+        ):
+            with self.assertRaisesRegex(eng.HarnessError, "22.22.0"):
+                eng._tool_versions()
 
     def test_snapshot_config_uses_main_and_inventory_digests(self) -> None:
         snapshot = eng._load_toml("project-snapshot.toml")

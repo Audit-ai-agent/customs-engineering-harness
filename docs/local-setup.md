@@ -1,6 +1,6 @@
 # Local setup
 
-Install Git 2.40 or newer, Python 3.11, Node.js 22, npm, and `uv` once on the
+Install Git 2.40 or newer, Python 3.11, Node.js 22.22 or newer (before 23), npm, and `uv` once on the
 workstation. `doctor` reports a precise missing or incompatible prerequisite.
 If Python 3.11 is not the `python` on `PATH`, set `CUSTOMS_PYTHON` to its
 executable before running `eng.ps1`.
