@@ -129,7 +129,7 @@ credentials:
 | Owner | Put only in | Never share or commit |
 | --- | --- | --- |
 | Data operator | `LAW_API_OC` in the ignored Data functional-UAT profile | key, raw official-law responses, model cache |
-| Agent operator | current Agent terminal's `ANTHROPIC_API_KEY` | key, prompt/request/response logs |
+| Agent operator | one `ANTHROPIC_API_KEY` in ignored `../_local/secrets/.env` | key, prompt/request/response logs |
 
 No teammate should send `_local`, a `.env` archive, a database volume, a model
 cache, or a Docker image to satisfy this step.  Backend/Data initialization
@@ -176,8 +176,9 @@ uv run --no-sync customs-backend-profile-init --profile functional-uat
 ```
 
 ```powershell
-# Agent terminal — supply personal ANTHROPIC_API_KEY only to this process by
-# the approved local secret mechanism before running the server.
+# Create ../_local/secrets/.env once on this PC with exactly:
+# ANTHROPIC_API_KEY=personal-key
+# The functional Agent importer reads that one value into this terminal only.
 Set-Location ..\customs-ai-agent
 uv sync --locked --group dev --extra functional-uat --python 3.11
 . .\tools\Import-AgentProfile.ps1 -Profile functional-uat-3law
