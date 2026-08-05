@@ -8,15 +8,15 @@ repository = "Audit-ai-agent/customs-engineering-harness"
 python = "3.11"
 git_minimum = "2.40"
 node_major = 22
-node_minimum = "22.22.0"
-npm_minimum = "10.9.8"
+node_minimum = "22.12.0"
+npm_version = "10.9.8"
 
 [repos.frontend]
 directory = "customs-frontend"
 repository = "Audit-ai-agent/customs-frontend"
 runtime = "npm"
-quick = [["npm", "run", "check:quick"]]
-contract = [["npm", "run", "check:contract"]]
+quick = [["corepack", "npm", "run", "check:quick"]]
+contract = [["corepack", "npm", "run", "check:contract"]]
 
 [repos.frontend.cross_contract]
 files = [

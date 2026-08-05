@@ -1,8 +1,12 @@
 # Local setup
 
-Install Git 2.40 or newer, Python 3.11, Node.js 22.22 or newer (before 23),
-npm 10.9.8 or newer, and `uv` once on the workstation. If Python 3.11 is not the `python` on
-`PATH`, set `CUSTOMS_PYTHON` to that executable before running `eng.ps1`.
+Install Git 2.40 or newer, Python 3.11, Node.js `>=22.12 <23`, and `uv` once
+on the workstation.  The Frontend pins **npm 10.9.8 exactly** through
+Corepack; do not rely on the npm bundled with Node.  Run `corepack enable` once
+if your Node installation has not enabled it.  The harness invokes
+`corepack npm` itself, and the Frontend's `packageManager` field selects the
+checked-in npm version. If Python 3.11 is not the `python` on `PATH`, set
+`CUSTOMS_PYTHON` to that executable before running `eng.ps1`.
 
 Clone the harness and four product repositories as direct siblings. HTTPS and
 SSH clone URLs both work, but each `origin` must identify the configured
@@ -102,7 +106,7 @@ uv run --no-sync customs-backend-api
 ```powershell
 # Terminal 4 — Frontend (after Backend is ready)
 Set-Location ..\customs-frontend
-npm run dev:local
+corepack npm run dev:local
 ```
 
 Open the loopback URL printed by Vite (normally `http://127.0.0.1:5173`) and
@@ -141,6 +145,16 @@ uv run --locked --no-sync --group dev --extra store --extra rag --extra ingestio
 # Add LAW_API_OC only to the ignored _local/profiles/functional-uat-3law/config.env.
 uv run --locked --no-sync --group dev --extra store --extra rag --extra ingestion python tools/functional_uat_3law.py compose up
 uv run --locked --no-sync --group dev --extra store --extra rag --extra ingestion python tools/functional_uat_3law.py build --as-of 2026-08-05
+```
+
+`build` and the normal UAT server perform only bounded source/cache/count and
+connectivity checks. A Data maintainer may explicitly run the costly complete
+PostgreSQL/Qdrant/Neo4j ID, hash, graph, and index comparison after Data
+ingestion/retrieval changes or an unexpected result; it is not required for
+every functional UAT journey.
+
+```powershell
+uv run --locked --no-sync --group dev --extra store --extra rag --extra ingestion python tools/functional_uat_3law.py verify-store
 ```
 
 In a separate Data terminal, serve the validated build:
@@ -183,7 +197,7 @@ uv run --no-sync customs-backend-api
 ```powershell
 # Frontend terminal
 Set-Location ..\customs-frontend
-npm run dev:functional-uat
+corepack npm run dev:functional-uat
 ```
 
 Sign in through the local Keycloak page as `local-functional-reviewer`.  To

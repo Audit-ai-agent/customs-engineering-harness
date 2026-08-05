@@ -259,7 +259,7 @@ def _repo_state(name: str) -> dict[str, Any]:
     }
 
 
-def _first_line(command: Sequence[str]) -> str | None:
+def _first_line(command: Sequence[str], *, cwd: Path | None = None) -> str | None:
     executable = shutil.which(command[0])
     if executable is None:
         return None
@@ -271,10 +271,22 @@ def _first_line(command: Sequence[str]) -> str | None:
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         check=False,
+        cwd=cwd,
     )
     if completed.returncode != 0:
         return None
     return completed.stdout.splitlines()[0].strip() if completed.stdout else ""
+
+
+def _frontend_package_manager() -> str:
+    package_manager_path = _repo("frontend") / "package.json"
+    try:
+        package_manager = json.loads(package_manager_path.read_text(encoding="utf-8")).get("packageManager")
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        raise HarnessError("frontend packageManager metadata is unavailable") from exc
+    if not isinstance(package_manager, str):
+        raise HarnessError("frontend packageManager metadata is invalid")
+    return package_manager
 
 
 def _tool_versions() -> dict[str, str]:
@@ -287,17 +299,15 @@ def _tool_versions() -> dict[str, str]:
     if not isinstance(node_major, int) or node_major < 1:
         raise HarnessError("tooling node_major is invalid")
     node_minimum = _required_string(config, "node_minimum", "tooling node_minimum")
-    npm_minimum = _required_string(config, "npm_minimum", "tooling npm_minimum")
+    npm_version = _required_string(config, "npm_version", "tooling npm_version")
     minimum_node_match = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)", node_minimum)
     if minimum_node_match is None:
         raise HarnessError("tooling node_minimum is invalid")
     minimum_node = tuple(int(value) for value in minimum_node_match.groups())
     if minimum_node[0] != node_major:
         raise HarnessError("tooling Node major and minimum are inconsistent")
-    npm_minimum_match = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)", npm_minimum)
-    if npm_minimum_match is None:
-        raise HarnessError("tooling npm_minimum is invalid")
-    minimum_npm = tuple(int(value) for value in npm_minimum_match.groups())
+    if re.fullmatch(r"(\d+)\.(\d+)\.(\d+)", npm_version) is None:
+        raise HarnessError("tooling npm_version is invalid")
 
     python_version = f"{sys.version_info.major}.{sys.version_info.minor}"
     if python_version != expected_python:
@@ -320,20 +330,19 @@ def _tool_versions() -> dict[str, str]:
     actual_node = tuple(int(value) for value in node_match.groups()) if node_match else None
     if actual_node is None or actual_node[0] != node_major or actual_node < minimum_node:
         raise HarnessError(f"Node.js {node_minimum} or newer within {node_major}.x is required")
-    npm_version = _first_line(("npm", "--version"))
-    if npm_version is None:
-        raise HarnessError("npm is required")
-    npm_match = re.fullmatch(r"v?(\d+)\.(\d+)\.(\d+)", npm_version)
-    actual_npm = tuple(int(value) for value in npm_match.groups()) if npm_match else None
-    if actual_npm is None or actual_npm < minimum_npm:
-        raise HarnessError(f"npm {npm_minimum} or newer is required")
+    corepack_version = _first_line(("corepack", "--version"))
+    if corepack_version is None:
+        raise HarnessError(f"Corepack is required for npm {npm_version}")
+    if _frontend_package_manager() != f"npm@{npm_version}":
+        raise HarnessError(f"frontend must pin npm@{npm_version} for Corepack")
     uv_version = _first_line(("uv", "--version"))
     if uv_version is None:
         raise HarnessError("uv is required for Python repository setup")
     return {
         "git": git_version,
         "node": node_version,
-        "npm": npm_version,
+        "corepack": corepack_version,
+        "npm": f"{npm_version} (pinned by Corepack)",
         "python": sys.version.split()[0],
         "uv": uv_version,
     }
@@ -380,7 +389,13 @@ def _setup_fingerprint(repository: Path, runtime: str) -> dict[str, str]:
         raise HarnessError(f"{repository.name} is missing {lock_name}")
     # Bump this whenever setup semantics change.  The marker then cannot claim
     # an older dependency selection is ready for a newer check configuration.
-    return {"lock_file": lock_name, "lock_sha256": _sha256(lock), "schema_version": "2"}
+    fingerprint = {"lock_file": lock_name, "lock_sha256": _sha256(lock), "schema_version": "3"}
+    if runtime == "npm":
+        tooling = _workspace_config().get("tooling")
+        if not isinstance(tooling, dict):
+            raise HarnessError("tooling configuration is invalid")
+        fingerprint["npm_version"] = _required_string(tooling, "npm_version", "tooling npm_version")
+    return fingerprint
 
 
 def _read_marker(repository: Path, runtime: str) -> dict[str, str] | None:
@@ -425,7 +440,7 @@ def _configured_commands(name: str, field: str) -> list[list[str]]:
 def _frontend_tree_is_healthy(repository: Path) -> bool:
     if not (repository / "node_modules").is_dir():
         return False
-    result = _run(["npm", "ls", "--depth=0", "--ignore-scripts"], cwd=repository, capture=True)
+    result = _run(["corepack", "npm", "ls", "--depth=0", "--ignore-scripts"], cwd=repository, capture=True)
     return result["exit_code"] == 0
 
 
@@ -433,11 +448,12 @@ def _setup_frontend(repository: Path) -> str:
     fingerprint = _setup_fingerprint(repository, "npm")
     if _read_marker(repository, "npm") == fingerprint and _frontend_tree_is_healthy(repository):
         return "reused"
-    # ``npm install`` reads the checked-in lockfile while synchronizing the
-    # existing directory in place. Unlike ``npm ci``, an explicit repeated
-    # setup does not begin by deleting a healthy node_modules tree.
+    # Corepack runs the exact checked-in npm version against the lockfile while
+    # synchronizing the existing directory in place. Unlike ``npm ci``, an
+    # explicit repeated setup does not begin by deleting a healthy node_modules
+    # tree.
     result = _run(
-        ["npm", "install", "--package-lock=true", "--prefer-offline"], cwd=repository
+        ["corepack", "npm", "install", "--package-lock=true", "--prefer-offline"], cwd=repository
     )
     if result["exit_code"] != 0:
         raise HarnessError("frontend dependency setup failed")

@@ -51,6 +51,13 @@ image, chat message, or shared ZIP. The Data and Agent repository READMEs give
 the exact local commands; the Backend README gives the profile initializer and
 local dependency compose command.
 
+The normal UAT service checks the local manifest, source hashes, model cache,
+minimum store counts, connectivity, mode, and token quickly. The exhaustive
+PostgreSQL/Qdrant/Neo4j identifier, hash, graph, and index comparison is the
+Data-owned optional `functional_uat_3law.py verify-store` command. It is for
+Data maintenance after store/retrieval changes or an unexpected result, not a
+per-journey UAT or release gate.
+
 ## Mode agreement
 
 Only two inter-service mode values exist:
