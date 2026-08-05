@@ -63,28 +63,29 @@ class HarnessTests(unittest.TestCase):
         self.assertNotIn("expected_upstream", config["repos"]["data_platform"])
         self.assertNotIn("expected_upstream_push", config["repos"]["data_platform"])
 
-    def test_tooling_rejects_node_below_the_shared_minimum(self) -> None:
+    def test_tooling_requires_the_shared_node_range_and_corepack_pin(self) -> None:
         tooling = {
             "tooling": {
                 "python": f"{sys.version_info.major}.{sys.version_info.minor}",
                 "git_minimum": "2.40",
                 "node_major": 22,
-                "node_minimum": "22.22.0",
-                "npm_minimum": "10.9.8",
+                "node_minimum": "22.12.0",
+                "npm_version": "10.9.8",
             }
         }
 
-        def versions(command: tuple[str, ...]) -> str:
+        def versions(command: tuple[str, ...], **_: object) -> str:
             return {
                 ("git", "--version"): "git version 2.49.0",
                 ("node", "--version"): "v22.23.1",
-                ("npm", "--version"): "10.9.8",
+                ("corepack", "--version"): "0.31.0",
                 ("uv", "--version"): "uv 0.11.28",
             }[command]
 
         with (
             patch.object(eng, "_workspace_config", return_value=tooling),
             patch.object(eng, "_first_line", side_effect=versions),
+            patch.object(eng, "_frontend_package_manager", return_value="npm@10.9.8"),
         ):
             self.assertEqual(eng._tool_versions()["node"], "v22.23.1")
 
@@ -93,12 +94,13 @@ class HarnessTests(unittest.TestCase):
             patch.object(
                 eng,
                 "_first_line",
-                side_effect=lambda command: "v22.15.0"
+                side_effect=lambda command, **_: "v22.11.0"
                 if command == ("node", "--version")
                 else versions(command),
             ),
+            patch.object(eng, "_frontend_package_manager", return_value="npm@10.9.8"),
         ):
-            with self.assertRaisesRegex(eng.HarnessError, "22.22.0"):
+            with self.assertRaisesRegex(eng.HarnessError, "22.12.0"):
                 eng._tool_versions()
 
         with (
@@ -106,12 +108,21 @@ class HarnessTests(unittest.TestCase):
             patch.object(
                 eng,
                 "_first_line",
-                side_effect=lambda command: "10.9.7"
-                if command == ("npm", "--version")
+                side_effect=lambda command, **_: None
+                if command == ("corepack", "--version")
                 else versions(command),
             ),
+            patch.object(eng, "_frontend_package_manager", return_value="npm@10.9.8"),
         ):
-            with self.assertRaisesRegex(eng.HarnessError, "npm 10.9.8"):
+            with self.assertRaisesRegex(eng.HarnessError, "Corepack.*npm 10.9.8"):
+                eng._tool_versions()
+
+        with (
+            patch.object(eng, "_workspace_config", return_value=tooling),
+            patch.object(eng, "_first_line", side_effect=versions),
+            patch.object(eng, "_frontend_package_manager", return_value="npm@10.9.7"),
+        ):
+            with self.assertRaisesRegex(eng.HarnessError, "pin npm@10.9.8"):
                 eng._tool_versions()
 
     def test_snapshot_config_uses_main_and_inventory_digests(self) -> None:
@@ -194,6 +205,7 @@ class HarnessTests(unittest.TestCase):
     def test_frontend_setup_uses_the_checked_in_lock_without_ci_cleanup(self) -> None:
         implementation = inspect.getsource(eng._setup_frontend)
         self.assertIn('"--package-lock=true"', implementation)
+        self.assertIn('["corepack", "npm", "install"', implementation)
         self.assertNotIn('"--package-lock=false"', implementation)
         self.assertNotIn('["npm", "ci"', implementation)
 
