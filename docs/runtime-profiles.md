@@ -36,7 +36,7 @@ The only externally issued inputs are individual, approved-channel values:
 | Owner | Local input | Purpose |
 | --- | --- | --- |
 | Data operator | `LAW_API_OC` | Retrieve exactly the three official customs laws for the fixed date `2026-08-05` |
-| Agent operator | `ANTHROPIC_API_KEY` | Run the real Claude review adapter |
+| Agent operator | one `ANTHROPIC_API_KEY` in ignored `_local/secrets/.env` | Run the real Claude review adapter |
 
 The Data profile writes raw official responses below
 `_local/profiles/functional-uat-3law/data/`, downloads pinned models only to
@@ -50,6 +50,15 @@ database volume, generated token, or run artifact in a repository, Docker
 image, chat message, or shared ZIP. The Data and Agent repository READMEs give
 the exact local commands; the Backend README gives the profile initializer and
 local dependency compose command.
+
+The Agent importer reads `_local/secrets/.env` only for
+`functional-uat-3law`. The file accepts one unquoted
+`ANTHROPIC_API_KEY=value` entry plus blank/comment lines; it is never read for
+`dev-fixture` and never reads the legacy `_local/secrets/uat/agent.env` file.
+When the canonical file exists it takes precedence over an inherited terminal
+value. If it is absent, a valid process-only `ANTHROPIC_API_KEY` remains a
+compatibility fallback. In either case, the key is not printed or persisted by
+the importer.
 
 The normal UAT service checks the local manifest, source hashes, model cache,
 minimum store counts, connectivity, mode, and token quickly. The exhaustive
