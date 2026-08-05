@@ -40,10 +40,16 @@ The only externally issued inputs are individual, approved-channel values:
 
 The Data profile writes raw official responses below
 `_local/profiles/functional-uat-3law/data/`, downloads pinned models only to
-`_local/cache/huggingface/`, and writes the redacted run manifest/result under
-`_artifacts/functional-uat/<run-id>/`. Backend profile initialization creates
-the local database, object-store, OIDC, and service-token settings below
-`_local/profiles/functional-uat/`. These paths are all Git-ignored.
+`_local/cache/huggingface/`, and writes its diagnostic manifest locally.
+Each review also writes its redacted detailed transcript only below
+`_local/state/scenario-runs/<review-run-id>/`. Backend profile initialization
+creates the local database, object-store, OIDC, and service-token settings
+below `_local/profiles/functional-uat/`. These paths are all Git-ignored.
+
+The transcript has exactly `scenario.json`, `public-api.jsonl`,
+`backend-agent.jsonl`, `agent-data.jsonl`, `claude.jsonl`, and `summary.json`.
+Backend owns the first two stream files; Agent owns the latter two. It stays on
+the operator's machine and is never a Git, PR, chat, or shared-ZIP input.
 
 No one should place the Law API key, Claude key, raw law text, model files,
 database volume, generated token, or run artifact in a repository, Docker

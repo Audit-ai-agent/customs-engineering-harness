@@ -1,8 +1,9 @@
 # Customs Engineering Harness
 
 This is the small shared local coordinator for four independent
-Customs product repositories. It contains no product code, service runtime,
-deployment definition, copied data, or secret.
+Customs product repositories. It is the team's only workspace validation
+path. It contains no product code, service runtime, deployment definition,
+copied data, or secret.
 
 ## Workspace
 
@@ -45,5 +46,15 @@ owns its own local start command; [local setup](docs/local-setup.md) gives the
 small, documented order for the ordinary fixture flow and the explicit
 functional-UAT flow.  No separate runtime bundle is required.
 
-See [local setup](docs/local-setup.md), [runtime profiles](docs/runtime-profiles.md),
+`_engineering/` is a personal record/archive directory, not a sixth repository
+to clone or a team execution harness.  Use this shared harness for workspace
+checks, then use the owning product README for service, `dev-fixture`, and
+functional-UAT commands.
+
+Functional-UAT keeps its redacted detailed transcript only in ignored
+`../_local/state/scenario-runs/<review-run-id>/`. It is never committed, added
+to a PR, pasted into chat, or put in a shared ZIP.
+
+See the [Korean teammate onboarding guide](docs/team-onboarding.ko.md),
+[local setup](docs/local-setup.md), [runtime profiles](docs/runtime-profiles.md),
 and [architecture](docs/architecture.md).
