@@ -8,6 +8,10 @@ if your Node installation has not enabled it.  The harness invokes
 checked-in npm version. If Python 3.11 is not the `python` on `PATH`, set
 `CUSTOMS_PYTHON` to that executable before running `eng.ps1`.
 
+For the Korean guide to teammate access, inputs that must remain local, and
+the boundary between ordinary development and functional UAT, see
+[team onboarding](team-onboarding.ko.md).
+
 Clone the harness and four product repositories as direct siblings. HTTPS and
 SSH clone URLs both work, but each `origin` must identify the configured
 `Audit-ai-agent` repository.
@@ -213,10 +217,23 @@ Set-Clipboard -Value ''
 ```
 
 Run exactly one representative journey (Case → `.txt` document → review →
-human-review result).  The Data manifest records date, law IDs, source hashes,
+human-review result). The Data manifest records date, law IDs, source hashes,
 model revisions, store counts, and build time only; it is diagnostic metadata,
-not an approval record.  Results stay in ignored
-`_artifacts/functional-uat/<run-id>/`.
+not an approval record.
+
+Every functional-UAT review automatically writes a redacted detailed local
+transcript under `../_local/state/scenario-runs/<review-run-id>/`:
+
+```text
+scenario.json          public-api.jsonl       backend-agent.jsonl
+agent-data.jsonl       claude.jsonl           summary.json
+```
+
+Backend owns the public/API-to-Agent files and Agent owns the Data/Claude
+files. The recorder excludes credentials, session/cookie/auth data, provider
+error bodies, and literal local secret values. Keep this directory local: do
+not commit it, attach it to a PR, paste it into chat, or include it in a shared
+ZIP.
 
 Stop Frontend, Backend, Agent, and Data with `Ctrl+C`.  Then stop only the
 functional Backend dependencies if they are no longer needed:
