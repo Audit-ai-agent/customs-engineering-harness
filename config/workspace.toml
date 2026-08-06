@@ -35,6 +35,8 @@ contract = [["python", "tools/check_backend.py", "contract"]]
 files = [
   { provider = "ai_agent", provider_path = "src/customs_ai_agent/contracts/schemas/backend/v3/review-request.schema.json", consumer_path = "src/customs_backend/contracts/agent/v3/review-request.schema.json" },
   { provider = "ai_agent", provider_path = "src/customs_ai_agent/contracts/schemas/backend/v3/review-result.schema.json", consumer_path = "src/customs_backend/contracts/agent/v3/review-result.schema.json" },
+  { provider = "ai_agent", provider_path = "src/customs_ai_agent/contracts/schemas/backend/v3/assistant-answer-request.schema.json", consumer_path = "src/customs_backend/contracts/agent/v3/assistant-answer-request.schema.json" },
+  { provider = "ai_agent", provider_path = "src/customs_ai_agent/contracts/schemas/backend/v3/assistant-answer-response.schema.json", consumer_path = "src/customs_backend/contracts/agent/v3/assistant-answer-response.schema.json" },
 ]
 
 [repos.ai_agent]
