@@ -55,11 +55,14 @@ For a focused change, use the affected product only:
 
 When a public provider schema changes, add `--cross` to compare the actual
 sibling provider bytes with its consumer copy. It is available for Frontend
-(Backend API), Backend (Agent review schemas), and Agent (Data Evidence
-schemas):
+(Backend API), Backend (Agent review, case-assistant, and knowledge-assistant
+schemas), and Agent (Data Evidence, general-guidance-query schema, and
+guidance source-registry manifest):
 
 ```powershell
 .\harness\eng.ps1 check contract --repo frontend --cross
+.\harness\eng.ps1 check contract --repo backend --cross
+.\harness\eng.ps1 check contract --repo ai_agent --cross
 ```
 
 The harness has no runtime command. Follow [runtime profiles](runtime-profiles.md)
@@ -67,6 +70,14 @@ and the product READMEs to start the services in the documented order. Default
 development uses `dev-fixture` and needs no supplied secret. Actual functional
 UAT is explicit and uses each operator's own Law API and Claude credentials;
 those values and all generated local configuration remain outside Git.
+
+The standalone customs knowledge assistant is a product screen/API, not a
+separate Harness runtime. In `dev-fixture` it uses the deterministic Data
+guidance fixture. Data also owns the separate
+`functional-uat-kr-trade` guidance-only profile and its explicit source
+`build`/`verify` commands. Use the Data README for that local, hash-verified
+source build; it does not rename, reset, or replace the current
+`functional-uat-3law` three-store Evidence UAT.
 
 ## Start the complete fixture stack
 
@@ -119,13 +130,19 @@ start a review, and inspect the human-review result.  The Browser obtains its
 development session from the loopback Backend; there is no password to copy or
 team secret to distribute.  Stop each process with `Ctrl+C` when finished.
 
-## Run the actual three-law functional UAT
+## Run the actual Functional-UAT document review
 
 This is a deliberate, local functional check—not a release, deployment,
 signature, quality certification, or approval.  It uses actual official-law
 responses, local PostgreSQL/Qdrant/Neo4j stores, pinned local models, and the
 operator's Claude account.  The only valid conclusion is that the one user
 journey worked and still requires human review.
+
+The 3-law Evidence profile is preserved alongside the knowledge-assistant
+expansion. Do not reset, copy, rename, or treat its local state as a broader
+Korea trade knowledge snapshot. A separately built
+`functional-uat-kr-trade` profile serves only general-guidance queries; it is
+not a substitute for this Evidence stack.
 
 Before starting, the person running it needs two **personal, approved-channel**
 credentials:
@@ -169,6 +186,42 @@ uv run --locked --no-sync --group dev --extra store --extra rag --extra ingestio
   --host 127.0.0.1 --port 18083
 ```
 
+### Add broad official guidance to the same Functional-UAT
+
+Use this additional Data peer when the Functional-UAT must exercise the
+standalone **통관 지식 도우미** or the general-guidance section of a mixed
+case question. It complements the already-running 3-law Evidence service; it
+does not replace it.
+
+The Data operator must first initialize the separate ignored profile, stage
+only registry-approved official source inputs as described in the Data README,
+then complete `build` and `verify`. The `--source-manifest` value is a relative
+path below that profile's ignored `data/guidance-sources/` directory. Do not
+put raw source material or a source manifest in Git.
+
+```powershell
+Set-Location ..\customs-data-platform
+uv run --locked --no-sync --group dev python tools/functional_uat_kr_trade.py init
+# Stage the approved local input below _local/profiles/functional-uat-kr-trade/data/guidance-sources/.
+uv run --locked --no-sync --group dev python tools/functional_uat_kr_trade.py build `
+  --source-manifest data/guidance-sources/<approved-source-build.json>
+uv run --locked --no-sync --group dev python tools/functional_uat_kr_trade.py verify
+```
+
+Keep the 3-law server at `127.0.0.1:18083`. In another Data terminal, start
+the verified guidance snapshot at a different loopback port:
+
+```powershell
+Set-Location ..\customs-data-platform
+uv run --locked --no-sync --group dev python tools/functional_uat_kr_trade.py serve-guidance `
+  --host 127.0.0.1 --port 18093
+```
+
+`serve-guidance` exposes only `/internal/rag/v3/guidance/query`. It cannot
+answer document-review `/retrieve` calls, and it stops if the local source
+build is missing or no longer verifies. The existing 3-law server remains the
+only Data peer for review readiness and Evidence retrieval.
+
 Create the unrelated Backend local profile once, then start the remaining
 three terminals in order:
 
@@ -185,9 +238,19 @@ uv run --no-sync customs-backend-profile-init --profile functional-uat
 # The functional Agent importer reads that one value into this terminal only.
 Set-Location ..\customs-ai-agent
 uv sync --locked --group dev --extra functional-uat --python 3.11
-. .\tools\Import-AgentProfile.ps1 -Profile functional-uat-3law
+# Review-only legacy path: . .\tools\Import-AgentProfile.ps1 -Profile functional-uat-3law
+# Broad knowledge composition: 3-law Evidence on 18083 + verified guidance on 18093.
+. .\tools\Import-AgentProfile.ps1 -Profile functional-uat-kr-trade `
+  -EvidencePort 18083 -GuidancePort 18093
 uv run --locked --no-sync --group dev --extra functional-uat customs-ai-agent-functional-uat-serve
 ```
+
+The composed Agent profile reads the two generated Data service tokens only
+into this Agent process. It fails before startup if either token is missing,
+the ports match, or the guidance snapshot is not available. If the separate
+guidance snapshot has not been built and verified, use the preserved
+`functional-uat-3law` importer instead and treat broad general questions as
+outside the available official snapshot coverage.
 
 ```powershell
 # Backend terminal
@@ -234,6 +297,14 @@ files. The recorder excludes credentials, session/cookie/auth data, provider
 error bodies, and literal local secret values. Keep this directory local: do
 not commit it, attach it to a PR, paste it into chat, or include it in a shared
 ZIP.
+
+If this Functional-UAT also exercises the standalone **통관 지식 도우미**, its
+Agent-owned turn record is kept separately below
+`../_local/state/scenario-runs/knowledge/<conversation-id>/turn-<id>/`. It
+contains no Case, Review Run, document, finding, or correction payload and is
+validated with the Agent repository's local knowledge-transcript verifier. It
+remains part of the same ignored `scenario-runs` boundary; do not move it into
+`_artifacts`, Git, or a shared report.
 
 Stop Frontend, Backend, Agent, and Data with `Ctrl+C`.  Then stop only the
 functional Backend dependencies if they are no longer needed:

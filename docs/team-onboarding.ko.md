@@ -37,6 +37,31 @@ Functional-UAT를 실행하면 비밀을 제거한 상세 transcript가 각 실�
 Backend→Agent, Agent→Data, Claude, summary 파일을 포함할 수 있으나 Git, PR,
 채팅, 공유 ZIP에는 절대 넣지 않는다.
 
+## 통관 지식 도우미의 현재 경계
+
+사건별 AI 도우미와 별도 통관 지식 도우미는 모두 제품 기능이다. 공유 Harness는
+이 기능을 실행하거나 법령 원문을 내려받지 않고, 제품 간 공개 schema bytes만
+확인한다.
+
+- 기본 개발에서는 `dev-fixture`의 결정론 지식 fixture로 화면·API·대화 흐름을
+  확인한다. Law API, Claude 키, 모델 cache, 다른 사람의 `_local`은 필요 없다.
+- 실제 공식 근거 안내는 Data가 만든 로컬 스냅샷만 사용한다. Agent가 웹 검색이나
+  임의 URL을 호출하지 않으며, Harness도 source 수집·검증·실행을 대신하지 않는다.
+- 현재 실제 문서 심사 Functional-UAT의 실행 명령과 로컬 상태는
+  `functional-uat-3law`다. 기존 3법 원문·store·manifest·transcript는 보존하며,
+  이름을 바꾸거나 새 지식 스냅샷으로 간주하지 않는다.
+- `functional-uat-kr-trade`는 Data가 소유하는 별도 **일반 안내 전용** 로컬
+  snapshot이다. Data README의 `init` → 명시적 source `build` → `verify` 절차로
+  hash가 확인된 자료만 사용할 수 있다. 이 profile은 3-store Evidence 심사를
+  대체하지 않으며, Harness가 source를 수집·생성·실행하거나 기존 3법 profile을
+  migration하지 않는다.
+- 일반 안내 응답의 `registry_sha256`은 사용한 source registry의 hash이고,
+  각 결과의 `registry_source_id`는 해당 공식 자료 계열을 가리킨다. Agent는
+  자신이 추적하는 registry 사본과 hash·자료 유형·주제·방향·공식 URI가 모두
+  맞을 때만 이를 공식 근거로 사용한다. 개별 결과 ID인 `source_id`만으로는
+  출처 계열을 판단하지 않는다. Harness의 `--cross`는 이 schema·registry
+  파일의 byte 일치만 확인하며, 실제 응답의 법률 판단을 대신하지 않는다.
+
 ## 팀원에게 전달할 것
 
 ### GitHub 접근 권한
@@ -155,6 +180,14 @@ Frontend → Backend → Agent → Data HTTP 연결을 실행하지만, 합성 E
 
 공개 API·schema를 바꿀 때만 `check contract`를 사용한다. provider schema의 실제
 형제 저장소 bytes까지 비교해야 하면 지원되는 저장소에서 `--cross`를 추가한다.
+
+```powershell
+# Agent의 지식 도우미 request/response를 Backend 소비자 사본과 비교
+.\harness\eng.ps1 check contract --repo backend --cross
+
+# Data의 general-guidance-query를 Agent 소비자 사본과 비교
+.\harness\eng.ps1 check contract --repo ai_agent --cross
+```
 
 ## 실제 Functional-UAT는 선택 사항
 

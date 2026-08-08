@@ -46,6 +46,15 @@ owns its own local start command; [local setup](docs/local-setup.md) gives the
 small, documented order for the ordinary fixture flow and the explicit
 functional-UAT flow.  No separate runtime bundle is required.
 
+The case AI assistant and the separate customs knowledge assistant are both
+product features, not Harness commands. In `dev-fixture`, their official-
+guidance boundary is exercised with deterministic fixture data and no external
+credential. Data now also owns an explicit, hash-verified
+`functional-uat-kr-trade` **guidance-only** snapshot build. It complements the
+existing three-law Evidence UAT; it neither renames nor replaces that profile.
+The Harness does not collect sources, build, serve, migrate, or delete either
+local profile.
+
 `_engineering/` is a personal record/archive directory, not a sixth repository
 to clone or a team execution harness.  Use this shared harness for workspace
 checks, then use the owning product README for service, `dev-fixture`, and
