@@ -1,5 +1,5 @@
 schema_version = "customs-project-snapshot/v2"
-snapshot_id = "current-main-trade-knowledge-2026-08-09-r9"
+snapshot_id = "current-main-trade-knowledge-2026-08-09-r10"
 inventory = "git ls-files -s -z"
 digest_algorithm = "sha256"
 
@@ -8,8 +8,8 @@ digest_algorithm = "sha256"
 [repositories.frontend]
 repository = "Audit-ai-agent/customs-frontend"
 branch = "main"
-revision = "1b1a6560cf856991fc0901fa02e6e97bdcb79a32"
-tracked_files_sha256 = "ff11e9d9ef341869c743cee3527a6fc7fb09c086810d6fae6b4335e3e1b635cc"
+revision = "c0e4ee1fad5db8a0a9cbf25a4217ec09bdba3471"
+tracked_files_sha256 = "bd63e69795b35282d543160b042716c9ed22e4b33f5840563990f4fbafbfa3bb"
 
 [repositories.backend]
 repository = "Audit-ai-agent/customs-backend"
