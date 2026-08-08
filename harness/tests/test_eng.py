@@ -171,6 +171,78 @@ class HarnessTests(unittest.TestCase):
         with self.assertRaisesRegex(eng.HarnessError, "no configured cross-repository"):
             eng._cross_contract_files("data_platform", Path("."))
 
+    def test_trade_knowledge_contract_mappings_are_provider_owned(self) -> None:
+        """Keep guidance schemas and source registry on the byte-for-byte boundary."""
+
+        definitions = eng._definitions()
+
+        def mappings(name: str) -> set[tuple[str, str, str]]:
+            records = definitions[name]["cross_contract"]["files"]
+            return {
+                (record["provider"], record["provider_path"], record["consumer_path"])
+                for record in records
+            }
+
+        backend_contracts = mappings("backend")
+        self.assertTrue(
+            {
+                (
+                    "ai_agent",
+                    "src/customs_ai_agent/contracts/schemas/backend/v3/review-request.schema.json",
+                    "src/customs_backend/contracts/agent/v3/review-request.schema.json",
+                ),
+                (
+                    "ai_agent",
+                    "src/customs_ai_agent/contracts/schemas/backend/v3/review-result.schema.json",
+                    "src/customs_backend/contracts/agent/v3/review-result.schema.json",
+                ),
+                (
+                    "ai_agent",
+                    "src/customs_ai_agent/contracts/schemas/backend/v3/assistant-answer-request.schema.json",
+                    "src/customs_backend/contracts/agent/v3/assistant-answer-request.schema.json",
+                ),
+                (
+                    "ai_agent",
+                    "src/customs_ai_agent/contracts/schemas/backend/v3/assistant-answer-response.schema.json",
+                    "src/customs_backend/contracts/agent/v3/assistant-answer-response.schema.json",
+                ),
+                (
+                    "ai_agent",
+                    "src/customs_ai_agent/contracts/schemas/backend/v3/knowledge-answer-request.schema.json",
+                    "src/customs_backend/contracts/agent/v3/knowledge-answer-request.schema.json",
+                ),
+                (
+                    "ai_agent",
+                    "src/customs_ai_agent/contracts/schemas/backend/v3/knowledge-answer-response.schema.json",
+                    "src/customs_backend/contracts/agent/v3/knowledge-answer-response.schema.json",
+                ),
+            }.issubset(backend_contracts)
+        )
+        self.assertTrue(
+            {
+                (
+                    "data_platform",
+                    "contracts/evidence/v3/rag_retrieval_v3.schema.json",
+                    "src/customs_ai_agent/contracts/evidence/v3/rag_retrieval_v3.schema.json",
+                ),
+                (
+                    "data_platform",
+                    "contracts/evidence/v3/readiness_v3.schema.json",
+                    "src/customs_ai_agent/contracts/evidence/v3/readiness_v3.schema.json",
+                ),
+                (
+                    "data_platform",
+                    "contracts/evidence/v3/guidance_query_v3.schema.json",
+                    "src/customs_ai_agent/contracts/evidence/v3/guidance_query_v3.schema.json",
+                ),
+                (
+                    "data_platform",
+                    "contracts/evidence/v3/guidance_registry_v1.manifest.json",
+                    "src/customs_ai_agent/contracts/evidence/v3/guidance_registry_v1.manifest.json",
+                ),
+            }.issubset(mappings("ai_agent"))
+        )
+
     def test_cross_contract_compares_exact_consumer_and_provider_bytes(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

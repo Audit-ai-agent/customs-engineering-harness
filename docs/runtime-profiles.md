@@ -20,6 +20,11 @@ key, Claude key, model cache, Docker container, database dump, or copied data.
   session to the Browser.
 - Frontend calls Backend API v1 only.
 
+The case AI assistant and the separate customs knowledge assistant use the
+same local-development boundary. The latter receives only deterministic
+official-guidance fixture data through Data; it does not receive a Case,
+document text, local secret, or live web-search capability.
+
 Profile initialization creates the loopback tokens and local service settings
 under the ignored workspace `_local/profiles/dev-fixture/` directory. They are
 per-machine runtime state, not team secrets. Do not commit, archive, or send
@@ -51,6 +56,16 @@ The transcript has exactly `scenario.json`, `public-api.jsonl`,
 Backend owns the first two stream files; Agent owns the latter two. It stays on
 the operator's machine and is never a Git, PR, chat, or shared-ZIP input.
 
+An independent **통관 지식 도우미** turn has no Case or Review Run to attach
+to that six-file record. During Functional-UAT, the Agent records its two
+Agent-owned streams below the reserved
+`_local/state/scenario-runs/knowledge/<conversation-id>/turn-<id>/` namespace
+instead. The namespace rejects Case, Review Run, document, finding, and
+correction payloads and has an Agent-owned local verifier. It is still below
+the same ignored `scenario-runs` boundary; earlier explicit-development
+`_local/state/knowledge-runs/` records remain preserved history, not a current
+Functional-UAT destination.
+
 No one should place the Law API key, Claude key, raw law text, model files,
 database volume, generated token, or run artifact in a repository, Docker
 image, chat message, or shared ZIP. The Data and Agent repository READMEs give
@@ -72,6 +87,43 @@ PostgreSQL/Qdrant/Neo4j identifier, hash, graph, and index comparison is the
 Data-owned optional `functional_uat_3law.py verify-store` command. It is for
 Data maintenance after store/retrieval changes or an unexpected result, not a
 per-journey UAT or release gate.
+
+## Broad official-knowledge Functional-UAT composition
+
+`functional-uat-3law` remains the Data-owned document-review Evidence profile.
+Its local source material, three-store state, manifest, and review transcripts
+are preserved as-is; they are neither renamed nor reused as a broad knowledge
+snapshot.
+
+`functional-uat-kr-trade` is a second, Data-owned official-knowledge
+**guidance-only** snapshot. Before it may serve, the Data operator must run
+its explicit `init` → registry-approved local source `build` → `verify`
+sequence. `build` and `verify` validate the staged source hashes and the local
+projection; they do not make the Harness download a source or create an input
+manifest. Follow the Data README for the approved input format and exact
+commands.
+
+When both document review and broad general guidance are being checked, one
+Agent uses the composed `functional-uat-kr-trade` Agent profile with two
+separate loopback Data peers:
+
+| Agent operation | Data profile and default address | Permitted API |
+| --- | --- | --- |
+| document-review readiness and Evidence retrieval | `functional-uat-3law` at `127.0.0.1:18083` | `/health/ready`, `/retrieve` |
+| general customs knowledge guidance | `functional-uat-kr-trade` at `127.0.0.1:18093` | `/guidance/query` only |
+
+The Agent importer reads a distinct generated local token for each peer, keeps
+both tokens in the current Agent process only, and requires both peers to
+return `X-Customs-Service-Mode: functional-uat`. The two ports must be
+different. A missing source build, token, loopback peer, or mode match stops
+the corresponding request without exposing a source body or credential.
+
+The guidance snapshot deliberately does **not** expose `/retrieve` and cannot
+replace the 3-law Evidence service. Conversely, the 3-law profile alone can
+continue to run the existing review journey, but broad topics outside its
+coverage must remain a grounded `no_coverage` response. The Harness does not
+download sources, create an input manifest, start either Data process, or
+migrate local data.
 
 ## Mode agreement
 

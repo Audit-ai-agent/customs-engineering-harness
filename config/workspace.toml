@@ -37,6 +37,8 @@ files = [
   { provider = "ai_agent", provider_path = "src/customs_ai_agent/contracts/schemas/backend/v3/review-result.schema.json", consumer_path = "src/customs_backend/contracts/agent/v3/review-result.schema.json" },
   { provider = "ai_agent", provider_path = "src/customs_ai_agent/contracts/schemas/backend/v3/assistant-answer-request.schema.json", consumer_path = "src/customs_backend/contracts/agent/v3/assistant-answer-request.schema.json" },
   { provider = "ai_agent", provider_path = "src/customs_ai_agent/contracts/schemas/backend/v3/assistant-answer-response.schema.json", consumer_path = "src/customs_backend/contracts/agent/v3/assistant-answer-response.schema.json" },
+  { provider = "ai_agent", provider_path = "src/customs_ai_agent/contracts/schemas/backend/v3/knowledge-answer-request.schema.json", consumer_path = "src/customs_backend/contracts/agent/v3/knowledge-answer-request.schema.json" },
+  { provider = "ai_agent", provider_path = "src/customs_ai_agent/contracts/schemas/backend/v3/knowledge-answer-response.schema.json", consumer_path = "src/customs_backend/contracts/agent/v3/knowledge-answer-response.schema.json" },
 ]
 
 [repos.ai_agent]
@@ -56,6 +58,8 @@ contract = [["python", "-m", "pytest", "-q", "tests/test_evidence_v3_consumer.py
 files = [
   { provider = "data_platform", provider_path = "contracts/evidence/v3/rag_retrieval_v3.schema.json", consumer_path = "src/customs_ai_agent/contracts/evidence/v3/rag_retrieval_v3.schema.json" },
   { provider = "data_platform", provider_path = "contracts/evidence/v3/readiness_v3.schema.json", consumer_path = "src/customs_ai_agent/contracts/evidence/v3/readiness_v3.schema.json" },
+  { provider = "data_platform", provider_path = "contracts/evidence/v3/guidance_query_v3.schema.json", consumer_path = "src/customs_ai_agent/contracts/evidence/v3/guidance_query_v3.schema.json" },
+  { provider = "data_platform", provider_path = "contracts/evidence/v3/guidance_registry_v1.manifest.json", consumer_path = "src/customs_ai_agent/contracts/evidence/v3/guidance_registry_v1.manifest.json" },
 ]
 
 [repos.data_platform]
