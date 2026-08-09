@@ -222,6 +222,26 @@ answer document-review `/retrieve` calls, and it stops if the local source
 build is missing or no longer verifies. The existing 3-law server remains the
 only Data peer for review readiness and Evidence retrieval.
 
+For TASK-0046 page-level V2 guidance, preserve the V1/r3 pointer above and
+build the separate V2 pointer explicitly.  The V2 build accepts only the
+registered official page IDs, exact HTTPS registry URLs, hash-verified local
+raw bytes, date/effective-date evidence where required, and excerpts that are
+traceable to those bytes.  Do not place any source input or raw page in Git.
+
+```powershell
+Set-Location ..\customs-data-platform
+uv run --locked --no-sync --group dev python tools/functional_uat_kr_trade.py build-v2 `
+  --source-manifest data/guidance-sources/<approved-v2-source-build.json>
+uv run --locked --no-sync --group dev python tools/functional_uat_kr_trade.py verify-v2
+uv run --locked --no-sync --group dev python tools/functional_uat_kr_trade.py serve-guidance-v2 `
+  --host 127.0.0.1 --port 18094
+```
+
+V2 exposes the same guidance query path and a readiness endpoint only.  It is
+not a second Evidence service.  The V2 pointer, registry version/hash, source
+receipt, and local source hash are rechecked before use; any mismatch returns
+the explicit unavailable boundary.
+
 Create the unrelated Backend local profile once, then start the remaining
 three terminals in order:
 
@@ -239,18 +259,19 @@ uv run --no-sync customs-backend-profile-init --profile functional-uat
 Set-Location ..\customs-ai-agent
 uv sync --locked --group dev --extra functional-uat --python 3.11
 # Review-only legacy path: . .\tools\Import-AgentProfile.ps1 -Profile functional-uat-3law
-# Broad knowledge composition: 3-law Evidence on 18083 + verified guidance on 18093.
-. .\tools\Import-AgentProfile.ps1 -Profile functional-uat-kr-trade `
-  -EvidencePort 18083 -GuidancePort 18093
+# Preserved V1/r3 knowledge path: . .\tools\Import-AgentProfile.ps1 -Profile functional-uat-kr-trade -EvidencePort 18083 -GuidancePort 18093
+# V2 page-level knowledge composition: 3-law Evidence on 18083 + verified V2 guidance on 18094.
+. .\tools\Import-AgentProfile.ps1 -Profile functional-uat-kr-trade-v2 `
+  -EvidencePort 18083 -GuidancePort 18094
 uv run --locked --no-sync --group dev --extra functional-uat customs-ai-agent-functional-uat-serve
 ```
 
 The composed Agent profile reads the two generated Data service tokens only
 into this Agent process. It fails before startup if either token is missing,
-the ports match, or the guidance snapshot is not available. If the separate
-guidance snapshot has not been built and verified, use the preserved
-`functional-uat-3law` importer instead and treat broad general questions as
-outside the available official snapshot coverage.
+the ports match, or the selected guidance snapshot is not available. If V2
+has not been built and verified, do not fall back silently to V1/r3: use the
+preserved `functional-uat-3law` importer for review-only verification or keep
+the requested general question at the explicit unavailable boundary.
 
 ```powershell
 # Backend terminal

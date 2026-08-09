@@ -21,6 +21,8 @@ contract = [["corepack", "npm", "run", "check:contract"]]
 [repos.frontend.cross_contract]
 files = [
   { provider = "backend", provider_path = "docs/openapi-v1.json", consumer_path = "contracts/backend-openapi-v1.json" },
+  { provider = "data_platform", provider_path = "contracts/evidence/v3/guidance_registry_v1.manifest.json", consumer_path = "contracts/evidence/v3/guidance_registry_v1.manifest.json" },
+  { provider = "data_platform", provider_path = "contracts/evidence/v3/guidance_registry_v2.manifest.json", consumer_path = "contracts/evidence/v3/guidance_registry_v2.manifest.json" },
 ]
 
 [repos.backend]
@@ -39,6 +41,8 @@ files = [
   { provider = "ai_agent", provider_path = "src/customs_ai_agent/contracts/schemas/backend/v3/assistant-answer-response.schema.json", consumer_path = "src/customs_backend/contracts/agent/v3/assistant-answer-response.schema.json" },
   { provider = "ai_agent", provider_path = "src/customs_ai_agent/contracts/schemas/backend/v3/knowledge-answer-request.schema.json", consumer_path = "src/customs_backend/contracts/agent/v3/knowledge-answer-request.schema.json" },
   { provider = "ai_agent", provider_path = "src/customs_ai_agent/contracts/schemas/backend/v3/knowledge-answer-response.schema.json", consumer_path = "src/customs_backend/contracts/agent/v3/knowledge-answer-response.schema.json" },
+  { provider = "data_platform", provider_path = "contracts/evidence/v3/guidance_registry_v1.manifest.json", consumer_path = "src/customs_backend/contracts/evidence/v3/guidance_registry_v1.manifest.json" },
+  { provider = "data_platform", provider_path = "contracts/evidence/v3/guidance_registry_v2.manifest.json", consumer_path = "src/customs_backend/contracts/evidence/v3/guidance_registry_v2.manifest.json" },
 ]
 
 [repos.ai_agent]
@@ -60,6 +64,7 @@ files = [
   { provider = "data_platform", provider_path = "contracts/evidence/v3/readiness_v3.schema.json", consumer_path = "src/customs_ai_agent/contracts/evidence/v3/readiness_v3.schema.json" },
   { provider = "data_platform", provider_path = "contracts/evidence/v3/guidance_query_v3.schema.json", consumer_path = "src/customs_ai_agent/contracts/evidence/v3/guidance_query_v3.schema.json" },
   { provider = "data_platform", provider_path = "contracts/evidence/v3/guidance_registry_v1.manifest.json", consumer_path = "src/customs_ai_agent/contracts/evidence/v3/guidance_registry_v1.manifest.json" },
+  { provider = "data_platform", provider_path = "contracts/evidence/v3/guidance_registry_v2.manifest.json", consumer_path = "src/customs_ai_agent/contracts/evidence/v3/guidance_registry_v2.manifest.json" },
 ]
 
 [repos.data_platform]

@@ -95,7 +95,7 @@ Its local source material, three-store state, manifest, and review transcripts
 are preserved as-is; they are neither renamed nor reused as a broad knowledge
 snapshot.
 
-`functional-uat-kr-trade` is a second, Data-owned official-knowledge
+`functional-uat-kr-trade` is the preserved V1/r3, Data-owned official-knowledge
 **guidance-only** snapshot. Before it may serve, the Data operator must run
 its explicit `init` → registry-approved local source `build` → `verify`
 sequence. `build` and `verify` validate the staged source hashes and the local
@@ -103,14 +103,26 @@ projection; they do not make the Harness download a source or create an input
 manifest. Follow the Data README for the approved input format and exact
 commands.
 
-When both document review and broad general guidance are being checked, one
-Agent uses the composed `functional-uat-kr-trade` Agent profile with two
-separate loopback Data peers:
+The Data-owned `functional-uat-kr-trade` local profile keeps a **separate V2
+active pointer** alongside its preserved V1/r3 pointer.  That V2 pointer must
+pass `build-v2` → `verify-v2` before serving and never changes or deletes
+V1/r3.  The composed **Agent runtime** is named
+`functional-uat-kr-trade-v2`; it deliberately reads the same Data profile's
+generated service token while selecting the V2 endpoint and registry version.
+Its public registry manifest contains only the approved page identity,
+authority, exact HTTPS URL, topic/scope/direction binding, and required-source
+bundle; raw source bytes, local paths, and source hashes stay below ignored
+`_local`.
+
+When both document review and page-level V2 general guidance are being
+checked, one Agent uses the composed `functional-uat-kr-trade-v2` profile
+with two separate loopback Data peers:
 
 | Agent operation | Data profile and default address | Permitted API |
 | --- | --- | --- |
 | document-review readiness and Evidence retrieval | `functional-uat-3law` at `127.0.0.1:18083` | `/health/ready`, `/retrieve` |
-| general customs knowledge guidance | `functional-uat-kr-trade` at `127.0.0.1:18093` | `/guidance/query` only |
+| preserved V1/r3 general guidance | `functional-uat-kr-trade` at `127.0.0.1:18093` | `/guidance/query` only |
+| page-level V2 general guidance | `functional-uat-kr-trade-v2` at `127.0.0.1:18094` | `/guidance/query` only |
 
 The Agent importer reads a distinct generated local token for each peer, keeps
 both tokens in the current Agent process only, and requires both peers to
@@ -118,12 +130,14 @@ return `X-Customs-Service-Mode: functional-uat`. The two ports must be
 different. A missing source build, token, loopback peer, or mode match stops
 the corresponding request without exposing a source body or credential.
 
-The guidance snapshot deliberately does **not** expose `/retrieve` and cannot
-replace the 3-law Evidence service. Conversely, the 3-law profile alone can
-continue to run the existing review journey, but broad topics outside its
-coverage must remain a grounded `no_coverage` response. The Harness does not
-download sources, create an input manifest, start either Data process, or
-migrate local data.
+Neither guidance snapshot exposes `/retrieve` or replaces the 3-law Evidence
+service. Conversely, the 3-law profile alone can continue to run the existing
+review journey, but broad topics outside its coverage must remain a grounded
+`no_coverage` response. V2 may be promoted only when every declared
+`(topic, scope, Korean applicable direction)` bundle is `covered`; until then
+the service remains unavailable or returns its explicit partial/no-coverage
+boundary. The Harness does not download sources, create an input manifest,
+start either Data process, or migrate local data.
 
 ## Mode agreement
 
