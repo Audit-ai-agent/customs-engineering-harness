@@ -216,6 +216,16 @@ class HarnessTests(unittest.TestCase):
                     "src/customs_ai_agent/contracts/schemas/backend/v3/knowledge-answer-response.schema.json",
                     "src/customs_backend/contracts/agent/v3/knowledge-answer-response.schema.json",
                 ),
+                (
+                    "data_platform",
+                    "contracts/evidence/v3/guidance_registry_v1.manifest.json",
+                    "src/customs_backend/contracts/evidence/v3/guidance_registry_v1.manifest.json",
+                ),
+                (
+                    "data_platform",
+                    "contracts/evidence/v3/guidance_registry_v2.manifest.json",
+                    "src/customs_backend/contracts/evidence/v3/guidance_registry_v2.manifest.json",
+                ),
             }.issubset(backend_contracts)
         )
         self.assertTrue(
@@ -240,7 +250,26 @@ class HarnessTests(unittest.TestCase):
                     "contracts/evidence/v3/guidance_registry_v1.manifest.json",
                     "src/customs_ai_agent/contracts/evidence/v3/guidance_registry_v1.manifest.json",
                 ),
+                (
+                    "data_platform",
+                    "contracts/evidence/v3/guidance_registry_v2.manifest.json",
+                    "src/customs_ai_agent/contracts/evidence/v3/guidance_registry_v2.manifest.json",
+                ),
             }.issubset(mappings("ai_agent"))
+        )
+        self.assertTrue(
+            {
+                (
+                    "data_platform",
+                    "contracts/evidence/v3/guidance_registry_v1.manifest.json",
+                    "contracts/evidence/v3/guidance_registry_v1.manifest.json",
+                ),
+                (
+                    "data_platform",
+                    "contracts/evidence/v3/guidance_registry_v2.manifest.json",
+                    "contracts/evidence/v3/guidance_registry_v2.manifest.json",
+                ),
+            }.issubset(mappings("frontend"))
         )
 
     def test_cross_contract_compares_exact_consumer_and_provider_bytes(self) -> None:

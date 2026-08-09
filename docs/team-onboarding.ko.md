@@ -50,11 +50,14 @@ Backend→Agent, Agent→Data, Claude, summary 파일을 포함할 수 있으나
 - 현재 실제 문서 심사 Functional-UAT의 실행 명령과 로컬 상태는
   `functional-uat-3law`다. 기존 3법 원문·store·manifest·transcript는 보존하며,
   이름을 바꾸거나 새 지식 스냅샷으로 간주하지 않는다.
-- `functional-uat-kr-trade`는 Data가 소유하는 별도 **일반 안내 전용** 로컬
-  snapshot이다. Data README의 `init` → 명시적 source `build` → `verify` 절차로
-  hash가 확인된 자료만 사용할 수 있다. 이 profile은 3-store Evidence 심사를
-  대체하지 않으며, Harness가 source를 수집·생성·실행하거나 기존 3법 profile을
-  migration하지 않는다.
+- `functional-uat-kr-trade`는 보존된 V1/r3 일반 안내 전용 로컬 snapshot이다.
+  Data README의 `init` → 명시적 source `build` → `verify` 절차로 hash가 확인된
+  자료만 사용할 수 있다.
+- `functional-uat-kr-trade-v2`는 공식 페이지 단위 V2 일반 안내 조합이다. V2는
+  `build-v2` → `verify-v2`를 통과하고 정의된 `(주제, 세부범위, 한국 적용 방향)`
+  묶음이 모두 covered일 때만 실제 Functional-UAT에서 사용한다. 원문·경로·해시는
+  계속 `_local`에만 두며, V1/r3와 3-store Evidence 심사를 대체하거나 migration하지
+  않는다.
 - 일반 안내 응답의 `registry_sha256`은 사용한 source registry의 hash이고,
   각 결과의 `registry_source_id`는 해당 공식 자료 계열을 가리킨다. Agent는
   자신이 추적하는 registry 사본과 hash·자료 유형·주제·방향·공식 URI가 모두

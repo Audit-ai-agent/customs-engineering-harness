@@ -49,9 +49,13 @@ functional-UAT flow.  No separate runtime bundle is required.
 The case AI assistant and the separate customs knowledge assistant are both
 product features, not Harness commands. In `dev-fixture`, their official-
 guidance boundary is exercised with deterministic fixture data and no external
-credential. Data now also owns an explicit, hash-verified
-`functional-uat-kr-trade` **guidance-only** snapshot build. It complements the
-existing three-law Evidence UAT; it neither renames nor replaces that profile.
+credential. Data owns two **guidance-only** snapshot builds: the preserved
+V1/r3 `functional-uat-kr-trade` and the separate page-level V2
+`functional-uat-kr-trade-v2`. V2 uses only
+versioned, hash-verified official-page receipts and is promoted only after
+every declared topic/scope/direction bundle is covered. It complements the
+existing three-law Evidence UAT; it neither renames nor replaces either
+preserved profile.
 The Harness does not collect sources, build, serve, migrate, or delete either
 local profile.
 
