@@ -10,12 +10,12 @@
 공유 `.env`, 계약 ZIP, Docker volume, DB dump, 모델 cache, 법령 snapshot은
 필요하지도 않고 전달해서도 안 된다.
 
-실제 관세 3법·Claude 기능 UAT를 명시적으로 수행하는 사람에게만 다음 두 외부
-입력이 필요하다.
+실제 65법령 이력·Claude 기능 UAT를 명시적으로 수행하는 사람에게만 다음 두 외부
+입력이 필요하다. 3법 UAT는 이력 프로필의 대체가 아니라 별도 호환 경로다.
 
 | 목적 | 개인별 외부 입력 | 로컬 보관 위치 |
 | --- | --- | --- |
-| 관세 3법 수집 | 승인된 `LAW_API_OC` | `_local/profiles/functional-uat-3law/config.env` |
+| 65법령 기준 snapshot 수집 | 승인된 `LAW_API_OC` | `_local/profiles/functional-uat-law-history/config.env` |
 | 실제 Claude 심사 | `ANTHROPIC_API_KEY` 및 사용 가능 크레딧 | `_local/secrets/.env` |
 
 두 값은 승인된 비밀 전달 경로로 개인에게 발급한다. 다른 팀원의 `.env` 파일을
@@ -47,17 +47,25 @@ Backend→Agent, Agent→Data, Claude, summary 파일을 포함할 수 있으나
   확인한다. Law API, Claude 키, 모델 cache, 다른 사람의 `_local`은 필요 없다.
 - 실제 공식 근거 안내는 Data가 만든 로컬 스냅샷만 사용한다. Agent가 웹 검색이나
   임의 URL을 호출하지 않으며, Harness도 source 수집·검증·실행을 대신하지 않는다.
-- 현재 실제 문서 심사 Functional-UAT의 실행 명령과 로컬 상태는
-  `functional-uat-3law`다. 기존 3법 원문·store·manifest·transcript는 보존하며,
-  이름을 바꾸거나 새 지식 스냅샷으로 간주하지 않는다.
+- 현재 실제 문서 심사 Functional-UAT의 기본 실행 명령과 로컬 상태는
+  `functional-uat-law-history`다. 이는 고정 65법령을 `2026-08-05` 기준으로
+  수집하고, 이후 변경은 사람의 명시적 refresh로만 누적하는 법령 이력 Evidence
+  profile이다. 법령 날짜는 심사일에 맞춰 찾되 HSK·요건 snapshot은 계속
+  `2026-08-05` 기준일을 별도 표시한다. 날짜가 다르면 `partial`이며, 현재 조문을
+  과거 조문처럼 대체하지 않는다.
+- `functional-uat-3law`은 기존 3법 원문·store·manifest·transcript를 보존하는
+  명시적 호환 UAT다. 이름을 바꾸거나 이력 Evidence의 입력·fallback으로 쓰지
+  않는다. 기본 `18083`은 law-history에 할당되므로 두 profile을 동시에 실행하면
+  3법 서버는 반드시 사람이 지정한 다른 loopback 포트를 사용한다.
 - `functional-uat-kr-trade`는 보존된 V1/r3 일반 안내 전용 로컬 snapshot이다.
   Data README의 `init` → 명시적 source `build` → `verify` 절차로 hash가 확인된
   자료만 사용할 수 있다.
-- `functional-uat-kr-trade-v2`는 공식 페이지 단위 V2 일반 안내 조합이다. V2는
+- `functional-uat-kr-trade-v2-law-history`는 기본 Evidence + 공식 페이지 단위 V2
+  일반 안내 조합이다. 기존 `functional-uat-kr-trade-v2`는 V2 + 3법 호환 조합으로
+  남는다. V2는
   `build-v2` → `verify-v2`를 통과하고 정의된 `(주제, 세부범위, 한국 적용 방향)`
   묶음이 모두 covered일 때만 실제 Functional-UAT에서 사용한다. 원문·경로·해시는
-  계속 `_local`에만 두며, V1/r3와 3-store Evidence 심사를 대체하거나 migration하지
-  않는다.
+  계속 `_local`에만 두며, V1/r3와 Evidence 심사를 대체하거나 migration하지 않는다.
 - 일반 안내 응답의 `registry_sha256`은 사용한 source registry의 hash이고,
   각 결과의 `registry_source_id`는 해당 공식 자료 계열을 가리킨다. Agent는
   자신이 추적하는 registry 사본과 hash·자료 유형·주제·방향·공식 URI가 모두
@@ -194,10 +202,10 @@ Frontend → Backend → Agent → Data HTTP 연결을 실행하지만, 합성 E
 
 ## 실제 Functional-UAT는 선택 사항
 
-Functional-UAT는 실제 관세 3법, 개인 Law API 권한, 로컬 PostgreSQL/Qdrant/Neo4j,
-고정 모델, 개인 Claude 계정으로 대표 사용자 여정 한 번을 확인하는 절차다. 이는
-배포 승인, 릴리스 인증, 자동 완료 허용, 품질 인증이 아니다. 결과는 항상
-`human_review_required`여야 한다.
+Functional-UAT는 실제 65법령 이력, 개인 Law API 권한, 로컬
+PostgreSQL/Qdrant/Neo4j, 고정 모델, 개인 Claude 계정으로 대표 사용자 여정 한 번을
+확인하는 절차다. 이는 배포 승인, 릴리스 인증, 자동 완료 허용, 품질 인증이 아니다.
+결과는 항상 `human_review_required`여야 한다.
 
 이 절차를 수행하도록 승인된 담당자만 자신의 PC에서 다음을 준비한다.
 
@@ -208,8 +216,7 @@ Functional-UAT는 실제 관세 3법, 개인 Law API 권한, 로컬 PostgreSQL/Q
 
 기존 Docker volume, 과거 법령 데이터, 다른 사람의 `_local`, 모델 cache는 이
 절차의 입력으로 복사하거나 재사용하지 않는다. 세부 명령과 종료·reset 방법은
-[실제 3법령 Functional-UAT](local-setup.md#run-the-actual-three-law-functional-uat)를
-따른다.
+[실제 Functional-UAT](local-setup.md)를 따른다.
 
 ## 빠른 판단표
 
@@ -217,7 +224,7 @@ Functional-UAT는 실제 관세 3법, 개인 Law API 권한, 로컬 PostgreSQL/Q
 | --- | --- | --- | --- |
 | 화면·API·통합 기능 개발 | 없음 | 없음 | 없음 |
 | 공개 API/schema 변경 검증 | 없음 | 없음 | 없음 |
-| 실제 3법령·Claude 기능 확인 | `LAW_API_OC`, `ANTHROPIC_API_KEY` | 필요 | 없음 — 각자 생성 |
+| 실제 65법령 이력·Claude 기능 확인 | `LAW_API_OC`, `ANTHROPIC_API_KEY` | 필요 | 없음 — 각자 생성 |
 
 이 경계를 지키면 새 팀원은 당신의 개인 비밀이나 과거 실행 상태에 의존하지 않고,
 동일한 프로젝트 구조와 Harness로 개발할 수 있다.

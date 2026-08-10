@@ -38,6 +38,16 @@ identifier of a concrete result record; it is not the source-family provenance
 key. The Harness only ensures both contract files are exact consumer copies
 and does not perform this runtime validation itself.
 
+`functional-uat-law-history` does not add a Harness runtime command or a
+profile secret. It remains Data-owned, with Agent selecting it through its
+own local importer. The additive Evidence `temporal_context` field stays on
+the existing Data retrieval-schema boundary, so
+`check contract --repo ai_agent --cross` continues to compare the exact
+provider/consumer bytes without interpreting dates or law content. The
+retained `functional-uat-3law` uses the same contract as an explicit legacy
+profile. This repository's snapshot is intentionally not updated for
+unmerged component branches.
+
 `config/project-snapshot.toml` records a known `main` composition. Its stable
 gate is the SHA-256 of `git ls-files -s -z`; the recorded commit is a reference
 only. A maintainer refreshes both values after a deliberately merged component
