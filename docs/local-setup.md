@@ -77,7 +77,8 @@ guidance fixture. Data also owns the separate
 `functional-uat-kr-trade` guidance-only profile and its explicit source
 `build`/`verify` commands. Use the Data README for that local, hash-verified
 source build; it does not rename, reset, or replace the current
-`functional-uat-3law` three-store Evidence UAT.
+`functional-uat-law-history` three-store Evidence UAT. The retained
+`functional-uat-3law` profile remains a separate compatibility path.
 
 ## Start the complete fixture stack
 
@@ -130,7 +131,7 @@ start a review, and inspect the human-review result.  The Browser obtains its
 development session from the loopback Backend; there is no password to copy or
 team secret to distribute.  Stop each process with `Ctrl+C` when finished.
 
-## Run the actual Functional-UAT document review
+## Run the actual Functional-UAT document review: 65-law Evidence history
 
 This is a deliberate, local functional check—not a release, deployment,
 signature, quality certification, or approval.  It uses actual official-law
@@ -138,11 +139,14 @@ responses, local PostgreSQL/Qdrant/Neo4j stores, pinned local models, and the
 operator's Claude account.  The only valid conclusion is that the one user
 journey worked and still requires human review.
 
-The 3-law Evidence profile is preserved alongside the knowledge-assistant
-expansion. Do not reset, copy, rename, or treat its local state as a broader
-Korea trade knowledge snapshot. A separately built
-`functional-uat-kr-trade` profile serves only general-guidance queries; it is
-not a substitute for this Evidence stack.
+The default Evidence profile is `functional-uat-law-history`. It collects the
+fixed 65-law registry as the explicit `2026-08-05` baseline and accumulates
+later official law versions only through an operator-requested refresh. It
+keeps law provenance and legal dates separate from the fixed `2026-08-05` HSK
+and requirements snapshots. The retained `functional-uat-3law` profile is a
+compatibility path, not an input to or fallback for law history. A separately
+built `functional-uat-kr-trade` profile serves only general-guidance queries;
+it is not a substitute for Evidence retrieval.
 
 Before starting, the person running it needs two **personal, approved-channel**
 credentials:
@@ -162,10 +166,10 @@ Prepare Data first.  `init` creates the ignored profile; add only the personal
 ```powershell
 Set-Location ..\customs-data-platform
 uv sync --locked --group dev --extra store --extra rag --extra ingestion --python 3.11
-uv run --locked --no-sync --group dev --extra store --extra rag --extra ingestion python tools/functional_uat_3law.py init
-# Add LAW_API_OC only to the ignored _local/profiles/functional-uat-3law/config.env.
-uv run --locked --no-sync --group dev --extra store --extra rag --extra ingestion python tools/functional_uat_3law.py compose up
-uv run --locked --no-sync --group dev --extra store --extra rag --extra ingestion python tools/functional_uat_3law.py build --as-of 2026-08-05
+uv run --locked --no-sync --group dev --extra store --extra rag --extra ingestion python tools/functional_uat_law_history.py init
+# Add LAW_API_OC only to the ignored _local/profiles/functional-uat-law-history/config.env.
+uv run --locked --no-sync --group dev --extra store --extra rag --extra ingestion python tools/functional_uat_law_history.py compose up
+uv run --locked --no-sync --group dev --extra store --extra rag --extra ingestion python tools/functional_uat_law_history.py build --as-of 2026-08-05
 ```
 
 `build` and the normal UAT server perform only bounded source/cache/count and
@@ -175,23 +179,31 @@ ingestion/retrieval changes or an unexpected result; it is not required for
 every functional UAT journey.
 
 ```powershell
-uv run --locked --no-sync --group dev --extra store --extra rag --extra ingestion python tools/functional_uat_3law.py verify-store
+uv run --locked --no-sync --group dev --extra store --extra rag --extra ingestion python tools/functional_uat_law_history.py verify-store
 ```
 
 In a separate Data terminal, serve the validated build:
 
 ```powershell
 Set-Location ..\customs-data-platform
-uv run --locked --no-sync --group dev --extra store --extra rag --extra ingestion python tools/functional_uat_3law.py serve `
+uv run --locked --no-sync --group dev --extra store --extra rag --extra ingestion python tools/functional_uat_law_history.py serve `
   --host 127.0.0.1 --port 18083
 ```
+
+Every history Evidence response exposes the law date, HSK snapshot date, and
+requirements snapshot date separately. For a later legal review date, the
+latter two remain `2026-08-05` and the result is explicitly `partial`; do not
+present it as a same-date-complete answer. To extend legal coverage, run the
+Data-owned explicit command `refresh --from YYYY-MM-DD --to YYYY-MM-DD` after
+the baseline succeeds. It is not a background update or a call the Harness
+makes.
 
 ### Add broad official guidance to the same Functional-UAT
 
 Use this additional Data peer when the Functional-UAT must exercise the
 standalone **통관 지식 도우미** or the general-guidance section of a mixed
-case question. It complements the already-running 3-law Evidence service; it
-does not replace it.
+case question. It complements the already-running law-history Evidence
+service; it does not replace it.
 
 The Data operator must first initialize the separate ignored profile, stage
 only registry-approved official source inputs as described in the Data README,
@@ -208,7 +220,7 @@ uv run --locked --no-sync --group dev python tools/functional_uat_kr_trade.py bu
 uv run --locked --no-sync --group dev python tools/functional_uat_kr_trade.py verify
 ```
 
-Keep the 3-law server at `127.0.0.1:18083`. In another Data terminal, start
+Keep the law-history server at `127.0.0.1:18083`. In another Data terminal, start
 the verified guidance snapshot at a different loopback port:
 
 ```powershell
@@ -219,8 +231,8 @@ uv run --locked --no-sync --group dev python tools/functional_uat_kr_trade.py se
 
 `serve-guidance` exposes only `/internal/rag/v3/guidance/query`. It cannot
 answer document-review `/retrieve` calls, and it stops if the local source
-build is missing or no longer verifies. The existing 3-law server remains the
-only Data peer for review readiness and Evidence retrieval.
+build is missing or no longer verifies. The history server remains the only
+Data peer for review readiness and Evidence retrieval.
 
 For TASK-0046 page-level V2 guidance, preserve the V1/r3 pointer above and
 build the separate V2 pointer explicitly.  The V2 build accepts only the
@@ -260,8 +272,8 @@ Set-Location ..\customs-ai-agent
 uv sync --locked --group dev --extra functional-uat --python 3.11
 # Review-only legacy path: . .\tools\Import-AgentProfile.ps1 -Profile functional-uat-3law
 # Preserved V1/r3 knowledge path: . .\tools\Import-AgentProfile.ps1 -Profile functional-uat-kr-trade -EvidencePort 18083 -GuidancePort 18093
-# V2 page-level knowledge composition: 3-law Evidence on 18083 + verified V2 guidance on 18094.
-. .\tools\Import-AgentProfile.ps1 -Profile functional-uat-kr-trade-v2 `
+# Default V2 composition: law-history Evidence on 18083 + verified V2 guidance on 18094.
+. .\tools\Import-AgentProfile.ps1 -Profile functional-uat-kr-trade-v2-law-history `
   -EvidencePort 18083 -GuidancePort 18094
 uv run --locked --no-sync --group dev --extra functional-uat customs-ai-agent-functional-uat-serve
 ```
@@ -270,8 +282,8 @@ The composed Agent profile reads the two generated Data service tokens only
 into this Agent process. It fails before startup if either token is missing,
 the ports match, or the selected guidance snapshot is not available. If V2
 has not been built and verified, do not fall back silently to V1/r3: use the
-preserved `functional-uat-3law` importer for review-only verification or keep
-the requested general question at the explicit unavailable boundary.
+law-history-only `functional-uat-law-history` importer for document review or
+keep the requested general question at the explicit unavailable boundary.
 
 ```powershell
 # Backend terminal
@@ -337,12 +349,22 @@ docker compose --project-name customs-functional-uat --env-file $Profile `
   -f deploy\functional-uat\compose.yaml down
 ```
 
-For a fresh three-law build on the same machine, use Data's explicit scoped
-reset.  It removes only that profile's store volumes and active manifest; it
+For a fresh law-history build on the same machine, use Data's explicit scoped
+reset. It removes only that profile's store volumes and active manifest; it
 preserves raw local source files and UAT artifacts.
 
 ```powershell
 Set-Location ..\customs-data-platform
-uv run --locked --no-sync --group dev --extra store --extra rag --extra ingestion python tools/functional_uat_3law.py reset `
-  --confirm-profile functional-uat-3law
+uv run --locked --no-sync --group dev --extra store --extra rag --extra ingestion python tools/functional_uat_law_history.py reset `
+  --confirm-profile functional-uat-law-history
 ```
+
+### Run the retained three-law compatibility profile deliberately
+
+Use `functional-uat-3law` only when a bounded compatibility check is the
+intent. Its raw local source, stores, and manifest stay independent of
+law-history. When it runs at the same time as the default profile, choose an
+explicit different loopback port for the legacy server and pass that port to
+the Agent importer; `18083` is reserved for law-history in the default
+topology. The Data README owns the exact legacy build, serve, and reset
+commands. It must never replace a missing law-history result.

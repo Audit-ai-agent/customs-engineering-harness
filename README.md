@@ -49,15 +49,17 @@ functional-UAT flow.  No separate runtime bundle is required.
 The case AI assistant and the separate customs knowledge assistant are both
 product features, not Harness commands. In `dev-fixture`, their official-
 guidance boundary is exercised with deterministic fixture data and no external
-credential. Data owns two **guidance-only** snapshot builds: the preserved
-V1/r3 `functional-uat-kr-trade` and the separate page-level V2
-`functional-uat-kr-trade-v2`. V2 uses only
-versioned, hash-verified official-page receipts and is promoted only after
-every declared topic/scope/direction bundle is covered. It complements the
-existing three-law Evidence UAT; it neither renames nor replaces either
-preserved profile.
-The Harness does not collect sources, build, serve, migrate, or delete either
-local profile.
+credential. The default real Evidence Functional-UAT profile is the
+date-aware, 65-law `functional-uat-law-history`; the retained
+`functional-uat-3law` is an explicit compatibility profile. Data also owns two
+**guidance-only** snapshot builds: the preserved V1/r3
+`functional-uat-kr-trade` and the separate page-level V2
+`functional-uat-kr-trade-v2`. V2 uses only versioned, hash-verified
+official-page receipts and is promoted only after every declared
+topic/scope/direction bundle is covered. The default composed Agent selection
+is `functional-uat-kr-trade-v2-law-history`; the existing V2 + three-law
+selection remains legacy. The Harness does not collect sources, build, serve,
+migrate, or delete any of these local profiles.
 
 `_engineering/` is a personal record/archive directory, not a sixth repository
 to clone or a team execution harness.  Use this shared harness for workspace
