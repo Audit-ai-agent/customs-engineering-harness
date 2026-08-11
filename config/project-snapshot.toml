@@ -14,8 +14,8 @@ tracked_files_sha256 = "3446c2f0bb12dc623ff797abb6faa1a4edf6825066d06689d77782b0
 [repositories.backend]
 repository = "Audit-ai-agent/customs-backend"
 branch = "main"
-revision = "1fe7284dc84091ef1c2137b1fee40ed5f5011ab8"
-tracked_files_sha256 = "baff8fadae2ab68c50c29a1fb10636d22ad3561ca76d93e04d3c706a9ed0e62c"
+revision = "bd0b893e89b7f2e1c480c6a59c344043f48c05ca"
+tracked_files_sha256 = "7ca15471a06d9a1e0a9acbbf4aaedef24996bd296d6e523f63ddfe2928c5d926"
 
 [repositories.ai_agent]
 repository = "Audit-ai-agent/customs-ai-agent"
