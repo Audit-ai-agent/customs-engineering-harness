@@ -8,23 +8,23 @@ digest_algorithm = "sha256"
 [repositories.frontend]
 repository = "Audit-ai-agent/customs-frontend"
 branch = "main"
-revision = "7297a3efbed5538fb5be0c4a8b3989d5684cc593"
-tracked_files_sha256 = "843e1d4983653153237ff7d64c1fd0e99bf15cc07393cf95685f08b1cec5acb3"
+revision = "e96e130b008044e779b8781851b72521699c47e5"
+tracked_files_sha256 = "3446c2f0bb12dc623ff797abb6faa1a4edf6825066d06689d77782b0c84b46be"
 
 [repositories.backend]
 repository = "Audit-ai-agent/customs-backend"
 branch = "main"
-revision = "ff5fc33621b48da72e2a28515bf821cbf1bc6a10"
-tracked_files_sha256 = "177bfc55a2b2e1816e6161bb4170c9b1bdc2401f754298b27cb82c25c3fe8c05"
+revision = "bd0b893e89b7f2e1c480c6a59c344043f48c05ca"
+tracked_files_sha256 = "7ca15471a06d9a1e0a9acbbf4aaedef24996bd296d6e523f63ddfe2928c5d926"
 
 [repositories.ai_agent]
 repository = "Audit-ai-agent/customs-ai-agent"
 branch = "main"
-revision = "29e24b15218a916a391d42d9aa0fe33c7f3d1c21"
-tracked_files_sha256 = "eecd055dcf6b60913f90f2d0b4ede5a94a31159e75c1bc932b401464e70c576e"
+revision = "6427fbc23e2084627b5eab5288c8a127be4071f8"
+tracked_files_sha256 = "e68f65cc2098e59734ab09910116abd68988df5d2f1d939adab38bfcde9899cb"
 
 [repositories.data_platform]
 repository = "Audit-ai-agent/customs-data-platform"
 branch = "main"
-revision = "ecb3e0e0708812b8260d0c9b04a8f0f56fb61959"
-tracked_files_sha256 = "760197fc147b0494f15cc33d0618c874dc6f3a249277071c24b2883a1f27fb29"
+revision = "09de1771631b9478ea7cd7b9b28b73448526d2ab"
+tracked_files_sha256 = "f442ad2ab28d2fe51f0d99b9dbeb486ae8421687582eba89ef3ec6db284751c0"
