@@ -70,6 +70,13 @@ Functional-UAT keeps its redacted detailed transcript only in ignored
 `../_local/state/scenario-runs/<review-run-id>/`. It is never committed, added
 to a PR, pasted into chat, or put in a shared ZIP.
 
+`python -B harness/validation_report.py` runs every repository's configured
+`quick` and `contract` checks, compares the cross-repository contract bytes,
+inventories retained UAT and Gold evidence, and writes one dated Markdown +
+JSON Validation Report under `../_artifacts/validation/`.  It is the record an
+enterprise validation step asks for; it is not a release approval by itself.
+See [Validation Report](docs/validation-report.ko.md).
+
 See the [Korean teammate onboarding guide](docs/team-onboarding.ko.md),
 [local setup](docs/local-setup.md), [runtime profiles](docs/runtime-profiles.md),
 and [architecture](docs/architecture.md).
