@@ -1,5 +1,5 @@
 schema_version = "customs-project-snapshot/v2"
-snapshot_id = "current-main-law-history-2026-08-18-r15"
+snapshot_id = "current-main-law-history-2026-09-11-r16"
 inventory = "git ls-files -s -z"
 digest_algorithm = "sha256"
 
@@ -8,23 +8,23 @@ digest_algorithm = "sha256"
 [repositories.frontend]
 repository = "Audit-ai-agent/customs-frontend"
 branch = "main"
-revision = "4aae385f4f42bf989b283da28456e5dfa568e64b"
-tracked_files_sha256 = "842794e6ccda92ee546e27afbb57a1fcadda2d9832c28188f9175c377c2e5f1e"
+revision = "9f7dc3bc8690ba267063c0f66db0c4cab0ede2e9"
+tracked_files_sha256 = "4699464c072a4c97ad163fa10f54b16980df566b361a32857009685b1a6400cc"
 
 [repositories.backend]
 repository = "Audit-ai-agent/customs-backend"
 branch = "main"
-revision = "647301c39c5f94be683e2d05561a562e099684fe"
-tracked_files_sha256 = "11bf0b8bde52d6546a754e6525450c198c2f6c8ad7d81c4e972bd9061ad6e945"
+revision = "1b4d01562f2b0d8c9f11fe1f2de058adf31983aa"
+tracked_files_sha256 = "42397f3ce248ea186e96df929b49e51522319e30dd34da4ba2dbef446d76e8ea"
 
 [repositories.ai_agent]
 repository = "Audit-ai-agent/customs-ai-agent"
 branch = "main"
-revision = "e521bf55f3d08618e5e8dc166a63d7476fce5dd1"
-tracked_files_sha256 = "b51a9eb862c543dd3f705935b002dd7f93f8e26d0ec35153f9fea8ce095d3b0d"
+revision = "17c78f5a7350e3181725f43b7a3aad216f585958"
+tracked_files_sha256 = "013c8c6a37e63880c7dc4c4f6c2700317dc569d5c721bd9821597206fb52724d"
 
 [repositories.data_platform]
 repository = "Audit-ai-agent/customs-data-platform"
 branch = "main"
-revision = "09de1771631b9478ea7cd7b9b28b73448526d2ab"
-tracked_files_sha256 = "f442ad2ab28d2fe51f0d99b9dbeb486ae8421687582eba89ef3ec6db284751c0"
+revision = "64755427bba880ea5d3db2414567b52db889c958"
+tracked_files_sha256 = "9eec5c2c60776c21efbbd1b09cd6430df5b15c744388365dfc8fcede10a348fa"

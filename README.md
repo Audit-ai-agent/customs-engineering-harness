@@ -79,4 +79,6 @@ See [Validation Report](docs/validation-report.ko.md).
 
 See the [Korean teammate onboarding guide](docs/team-onboarding.ko.md),
 [local setup](docs/local-setup.md), [runtime profiles](docs/runtime-profiles.md),
-and [architecture](docs/architecture.md).
+[architecture](docs/architecture.md), and the Korean
+[codebase map](docs/codebase-map.ko.md) for a one-page reference of all five
+repositories.
