@@ -110,8 +110,11 @@ src/ui/trade.tsx        HsClassificationCard, OriginVerificationCard, DutyDiagno
 src/ui/History.tsx      실행 타임라인, 정정 제안 승인/반려, 재심사
 src/ui/Assistant.tsx    Case AI 도우미
 src/ui/StateFlow.tsx    상태 전이 SVG + 담당자 업무 6단계
+src/ui/ReportPrint.tsx  보고서 PDF 저장: 인쇄 전용 보고서 사본을 body 끝에 portal로 붙이고 window.print() (PDF는 브라우저 인쇄 대상)
+src/ui/nextSteps.ts     "이어서 할 일" 행 계산(nextStepRows)·comparisonFor. Review.tsx와 ReportPrint.tsx가 공유
 src/ui/Admin.tsx        숨김 #/admin LLM 설정
-src/*.css               styles.css → components → krds → motion → stages → review (import 순서 = 캐스케이드)
+src/*.css               styles.css → components → krds → motion → stages → review → print (import 순서 = 캐스케이드)
+                        print.css는 @media print에서 .report-print만 남기고 나머지 body 자식을 숨긴다
 scripts/                check-static-boundaries.mjs(=lint), check-contract.mjs, sync-backend-openapi.mjs, doctor.mjs
 dev/preview.html+ts     스텁 api로 실제 workbench를 띄우는 미리보기(빌드 제외)
 deploy/uat/             정적 nginx smoke 이미지(build:functional-uat 사용)
@@ -165,6 +168,7 @@ tests/*.test.ts         Vitest+jsdom 7개(workbench, review, stages, admin, api-
 | 규칙/필드/상태 라벨 | `labels.ts`(RULE_TITLES, FIELD_LABELS, display, workflowLabel) |
 | 판단 사유 프리셋 | `labels.ts` DECISION_REASON_OPTIONS + `types.ts` FindingDecisionReasonCode (Backend enum과 함께) |
 | 확인 사항 카드 | `Review.tsx`(FindingCard, Collapsible), `review.css`, `tests/review.test.ts` |
+| 보고서 PDF 출력 내용·서식 | `ReportPrint.tsx`(ReportPrintView), `print.css`, `tests/review.test.ts` "보고서 PDF 저장". PDF 라이브러리 없음(CSP) |
 | 새 API 호출 | `types.ts` → `decoders.ts` → `client.ts` → `store.ts` → `dev/preview.ts` 스텁 → `tests/api-client.test.ts` |
 | 오류 문구 | `src/api/user-facing-errors.ts` |
 | 업무함 그룹·필터 | `Dashboard.tsx`(GROUP_ORDER, STAT_CARDS), `constants.ts` CASE_FILTERS |
