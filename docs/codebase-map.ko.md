@@ -72,9 +72,12 @@ Data 프로필 전체: `dev-fixture`, `dev-store`, `functional-uat-law-history`(
 | Data → Backend, Frontend | `guidance_registry_v1/v2.manifest.json` | 각 저장소 `contracts/evidence/v3/` |
 
 - Data의 law-search·law-catalog 요청/응답은 계약 파일에 없다(drift 검사 대상 아님).
-- 이름 주의: Backend→Agent 심사 경로는 `/internal/agent/v2/reviews`인데 payload는 "V3(.2)" schema다.
-- Agent `review-result.schema.json`의 `Engine.kind`는 `deterministic|claude`뿐이다. OpenAI를 써도 `claude`로 보고되고
-  `model_id`에만 실제 모델이 들어간다. 바꾸려면 Agent schema·Backend 사본·Frontend 타입을 한 번에 올려야 한다.
+- 이름 주의: Backend→Agent 심사 경로는 `/internal/agent/v2/reviews`인데 payload는 "V3(.3)" schema다.
+- 결과 3.3(2026-09-14): `Engine.kind`는 실제 제공자 `deterministic|anthropic|openai`(`claude`는 3.3 이전 저장 결과 읽기용)이고
+  `engine.orchestrator{framework:"langgraph",version}`가 붙는다. 추가 필드는 전부 additive다: `workflow.graph_trace`,
+  `confidence`(전체·임계값·review_track), `eligibility_verdict`(advisory 고정 true), `findings[].confidence/classification`,
+  `document_analyses[].extraction_source`, 요청의 `documents[].extraction{source,layout_summary}`. 새 중첩 필드는 JSON 계약에서
+  required가 아니다(3.2 픽스처 호환). null인 `confidence`/`eligibility_verdict`는 `temporal_*`처럼 result_sha256에서 생략한다.
 - Evidence V3 `schema_version`은 `"3.0"` 고정, 필드는 additive로만 추가한다(`temporal_context`, `temporal_coverage`,
   `scope_hint`, `expected_snapshot_id` 등).
 - 일반 안내 응답: Data가 `registry_sha256`과 결과별 `registry_source_id`를 주고, Agent는 자기 registry 사본의 hash·출처
@@ -327,8 +330,13 @@ uv run --no-sync customs-backend-api
 service/app.py            FastAPI create_app: 모든 라우트, bearer 인증, 모드 헤더 미들웨어, preview engine 주입
 service/__main__.py       uvicorn 기동(_serve(mode))
 service/settings.py       ServiceSettings.from_environment(): 모든 env 파싱·범위 검증
-service/profiles.py       ProfileRuntime(심사·도우미·지식·law 프록시), ProfileEvidenceRetriever(Data 클라이언트), 결정론 분석기, _engine()
-service/workflow.py       run_bounded_workflow: 추출 → 1회 재추출 → 문서간 비교 → finding → stage
+service/profiles.py       ProfileRuntime(심사·도우미·지식·law 프록시), ProfileEvidenceRetriever(Data 클라이언트), 결정론 분석기, _engine(),
+                          _evidence_stage(그래프의 evidence 노드 본체: Data 1회 호출 또는 명시적 skip)
+service/graph.py          LangGraph StateGraph: extraction_agent → cross_validation_agent →(감사 루프 1회)→ evidence_retrieval
+                          → expert_review_agent → report_generation. ReviewGraphConfig/run_review_graph/derive_statuses
+service/workflow.py       결정론 핵심(추출 렌더링·규칙 비교·finding·stage)과 run_bounded_workflow(그래프 래퍼, evidence 없이 종료)
+service/confidence.py     결정론 신뢰도(추출·비교·근거 성분 0.4/0.4/0.2)와 finding별 신뢰도, review_track
+service/expert_review.py  권고 적격 판정 규칙(rule_verdict)과 LLM 의견 병합(merge_llm_verdict, 더 엄격한 방향만)
 service/controller.py     동시성 Semaphore, review_run_id 기반 idempotent replay
 service/assistant.py      Case 도우미·통관 지식 답변, guidance V1/V2
 service/guidance_registry.py  registry manifest fail-closed 소비
@@ -340,11 +348,11 @@ service/document_extraction.py / document_preview_runtime.py   v2 미리보기 �
 service/raster_document_* / raster_text_* / ppstructurev3_sidecar.py   v3 raster OCR(해시 고정 sidecar 번들)
 adapters/llm.py           ClaudeSettings(provider 중립), build_provider_client, OpenAIMessagesClient, ClaudeDocumentAnalyzer, ClaudeGroundedResponder
 adapters/retrieval.py     Data URL loopback 검증
-schemas/v3.py             심사 wire 모델(ReviewRunResultV3, schema 3.2, EngineV3)
+schemas/v3.py             심사 wire 모델(ReviewRunResultV3, schema 3.3, EngineV3+OrchestratorV3, GraphTraceV3, ConfidenceV3, EligibilityVerdictV3)
 contracts/schemas/backend/v3/   Agent HTTP 계약 원본 12개
 contracts/evidence/v3/    Data 계약 사본
 contracts/registry.py     패키지된 schema 로더·sha256
-prompts/*.txt             functional-uat 고정 prompt 5개
+prompts/*.txt             functional-uat 고정 prompt 7개(finding_classification_v1, expert_review_v1 포함)
 scenario_transcript.py    _local/state/scenario-runs 기록(agent-data.jsonl, claude.jsonl)
 evaluation/               OCR Gold·합성 평가(서비스 경로 아님)
 tools/Import-AgentProfile.ps1   profile env를 현재 PS 세션에 주입(dot-source 필수)
@@ -368,14 +376,20 @@ uv run --locked --no-sync --group dev --extra functional-uat customs-ai-agent-fu
 - 이 PC의 시스템 `python`은 3.14이므로 항상 `uv run`이나 `.venv`를 쓴다.
 
 ### 도메인
-- 심사 파이프라인 `POST /internal/agent/v2/reviews` → `ProfileRuntime.review_v3_json` → `run_bounded_workflow`
-  1. 분석: local-dev는 결정론 분석기, UAT는 LLM 분석기를 쓴다.
-  2. 문서별 재추출은 최대 1회다.
-  3. 코드 비교: invoice↔packing, 금액·총액, 원산지, 수출신고, 운송↔포장.
-  4. Data `/retrieve`를 1회 일괄 호출한다. law-history 프로필이면 `law_as_of == review_as_of`를 요구한다.
-  5. finding, required_actions, 8구역 보고서를 만든다.
+- 심사 파이프라인 `POST /internal/agent/v2/reviews` → `ProfileRuntime.review_v3_json` → `graph.run_review_graph`
+  (LangGraph StateGraph, checkpointer 없음, recursion_limit 16). 노드:
+  1. `extraction_agent`: local-dev는 결정론 분석기, UAT는 LLM 분석기. 2회차는 감사 요청 필드만 `focus_fields`로 재판독(문서당 1회).
+  2. `cross_validation_agent`: 렌더링·승인된 사람 수정·**코드 규칙 비교**(판정은 항상 코드)·finding. 1회차에 감사 판단:
+     필수 필드 누락/인용 미확인(`_reextraction_targets`) + UAT에서만 mismatch 재판독·LLM 재판독 요청 → 있으면
+     `extraction_agent`로 되돌아간다(`loop_reason`). LLM(purpose `finding_classification`)은 오류 유형 분류·설명만 덧붙인다(fail-open).
+  3. `evidence_retrieval`: Data `/retrieve` 1회 일괄 호출(프로필이 주입한 `_evidence_stage`). law-history면 `law_as_of == review_as_of` 요구.
+  4. `expert_review_agent`: 신뢰도·review_track(`CUSTOMS_AGENT_CONFIDENCE_THRESHOLD`, 기본 0.8), 권고 판정(mismatch high →
+     ineligible, 요건·needs_review·partial·근거 없음·낮은 신뢰도 → indeterminate, 그 외 eligible). UAT면 LLM(purpose `expert_review`)이
+     더 엄격한 쪽으로만 바꿀 수 있고 인용 ID가 결과에 없으면 무시된다. `requires_human_review`는 항상 true.
+  5. `report_generation`: required_actions와 결정론 8구역 보고서. 기능 UAT 문장 합성(`_compose_functional_report`)은 검증 뒤 profiles에서.
 - stage 8종: classify, extract, normalize, match, validate, reextract, retrieve_evidence, generate_result.
-  planner는 최대 2 cycle, 6 action이다.
+  planner는 최대 2 cycle, 6 action 그대로다(예비 비교는 planner에 기록하지 않고 `graph_trace`에만 남는다). `graph_trace`는
+  iteration ≤ 2, node_runs ≤ 8.
 - `ReviewRunResultV3` 주요 필드:
   - status: `needs_review|blocked`
   - execution_status: `succeeded|partial|failed`
@@ -417,6 +431,7 @@ uv run --locked --no-sync --group dev --extra functional-uat customs-ai-agent-fu
 | `CUSTOMS_AGENT_LLM_MAX_TOKENS`, `CUSTOMS_AGENT_LLM_TIMEOUT_SECONDS` | 기본 4096 / 90. 없으면 `*_CLAUDE_*` 값을 대신 읽음 |
 | `CUSTOMS_AGENT_LLM_SETTINGS_PATH` | LLM 설정 override 저장 경로 |
 | `CUSTOMS_AGENT_RUN_TIMEOUT_SECONDS` | 420 |
+| `CUSTOMS_AGENT_CONFIDENCE_THRESHOLD` | 0.8. review_track 분기 기준(0~1) |
 | `CUSTOMS_AGENT_MAX_CONCURRENCY` | 2 |
 | `CUSTOMS_AGENT_EVIDENCE_RETRIEVE_TIMEOUT_SECONDS` | 90 |
 | `CUSTOMS_AGENT_DOCUMENT_PREVIEW_DEMO` | 문서 미리보기 데모 모드 |
@@ -438,6 +453,9 @@ uv run --locked --no-sync --group dev --extra functional-uat customs-ai-agent-fu
 | 새 LLM provider | `adapters/llm.py`(LLMProvider, build_provider_client), `llm_settings.py` _PROVIDERS, pyproject extra + `uv lock` |
 | prompt | `prompts/*.txt` |
 | 비교 규칙·finding | `service/workflow.py`(_comparisons), 필요시 `schemas/v3.py` + schema, `tests/service/test_bounded_workflow.py` |
+| 그래프 노드·감사 루프 | `service/graph.py`(_audit, _mismatch_reread_targets, _llm_classifications), `tests/service/test_review_graph.py` |
+| 신뢰도 공식·임계값 | `service/confidence.py`, `settings.py`, `tests/service/test_confidence.py` |
+| 권고 판정 규칙 | `service/expert_review.py`, `tests/service/test_expert_review.py` |
 | 결정론 추출 | `service/profiles.py` _DeterministicDocumentAnalyzer |
 | 보고서 | `service/report.py`, `schemas/v3.py` ReportSectionV3 |
 | 새 엔드포인트 | `service/app.py`, `ProfileRuntime.*_json`, `tests/service/test_openapi.py`, 필요시 계약 schema + `contracts/registry.py` + Backend 사본 |
@@ -464,10 +482,12 @@ law_repository/src/
   guidance_v3.py, guidance_registry(_v2).py(+json)   안내 질의와 registry
   conformance.py              dev-fixture 결정론 합성 백엔드
   repository.py               조회 계층(_temporal_predicate 단일 경로, 저장소별 검색, HSK 해소, 그래프 확장)
-  hybrid.py                   RRF(k=60) + bge-reranker, 실패 시 RRF 순위로 fallback
+  hybrid.py                   (연구 프로토타입) RRF(k=60) + bge-reranker, 실패 시 RRF 순위로 fallback
+  retrieval_five_stage.py     제품 5단 검색: 질의 재작성(사전·앵커, LLM 없음) → 가중 RRF(변형 0.6) → DELEGATES 이웃 확장(시드 10, ≤15,
+                              (law_id, article_no)→기준일 조문 매핑) → CPU cross-encoder(풀 30) → z(rerank)+2.0·z(RRF), score는 min-max
   lawgo.py                    법제처 DRF 클라이언트(JO 6자리)
   ingest/{laws,hsk,ccct,graph}.py   조문·HSK·CCCT·조문 그래프 적재
-  embed/{dense,bm25,rerank,model_identity}.py   bge-m3 / 자체 한국어 n-gram BM25 / reranker, revision 고정
+  embed/{dense,bm25,rerank,model_identity}.py   bge-m3 / Kiwi 형태소 BM25(`ko-kiwi-md5-bm25/v2`, avgdl 141, 결합형 방출) / reranker, revision 고정
   law_history.py(+_spec)      65법령 시점 이력 프로필(수집, 영수증, 락, 복구, 백엔드)
   functional_uat.py(+_spec)   3law 프로필
   functional_uat_kr_trade(_v2).py   guidance 스냅샷 빌드·검증·V2 변경 감지
@@ -565,8 +585,9 @@ OpenAPI 문서 경로는 꺼져 있다.
 | guidance 토픽·scope | `guidance_registry_v1.json` / `_v2.json` + 대응 .py → manifest 재생성 |
 | guidance 질의 | `guidance_v3.py`, `guidance_query_v3.schema.json` |
 | 65법령 목록·기준일·고정 해시 | `law_history_spec.py` |
-| 검색 순위 | `hybrid.py`, `law_history_benchmark.py` |
-| 임베딩·BM25 | `embed/model_identity.py`, `embed/bm25.py`(ENCODER_VERSION 변경 시 전체 재인덱싱) |
+| 검색 순위 | `retrieval_five_stage.py`(제품), `hybrid.py`(프로토타입), `law_history_benchmark.py` |
+| 검색 전략 바인딩 | manifest `retrieval_strategy ∈ {rrf_lexical, cross_encoder_rerank, five_stage_cpu}`. `build --retrieval-strategy five_stage_cpu --allow-unbenchmarked`(개발) 또는 벤치마크 `--apply-result`. five_stage_cpu는 refresh에서 유지(디지스트만 초기화), p95 게이트 면제·recall ≥ baseline만 요구 |
+| 임베딩·BM25 | `embed/model_identity.py`, `embed/bm25.py`(ENCODER_VERSION 변경 시 전체 재인덱싱; Kiwi 전환으로 v2, 기존 저장소는 `build` 재실행 필요) |
 | PG 스키마 | 새 `migrations/008_*.sql` |
 | 조문 그래프 규칙 | `ingest/graph.py`(extract_refs) |
 | 프로필 포트·토큰 | `local_profiles.py` |
@@ -595,7 +616,8 @@ OpenAPI 문서 경로는 꺼져 있다.
 | Browser API 필드·엔드포인트 | Backend 코드 → `export_product_openapi.py` → **커밋** → `check_backend.py contract` → Frontend `contract:generate` → types/decoders/client/store → `check contract --repo frontend --cross` |
 | 판단 사유 코드 추가 | Backend `domain.py` enum+LABELS → OpenAPI 재생성·커밋 → Frontend `labels.ts` DECISION_REASON_OPTIONS + `types.ts` |
 | Agent 심사 결과 필드 | Agent `schemas/v3.py` + `contracts/schemas/backend/v3/review-result.schema.json` → Backend 사본 복사 + `domain.py` + `_build_run` + fixture → 필요하면 OpenAPI → Frontend. `check contract --repo backend --cross` |
-| `Engine.kind`에 openai 추가 | 위와 같은 경로 전체(Agent schema·`_engine()`·metadata → Backend 사본 → Frontend 타입) |
+| `Engine.kind`·orchestrator (완료, 3.3) | Agent `_engine()`은 설치된 제공자를 보고한다. 값 추가 시 Agent schema(`review-result`, `assistant/knowledge-answer-response`) → Backend 사본 → Frontend `decodeEngine` |
+| 그래프 노드·LLM purpose 추가 | Agent `service/graph.py` + `schemas/v3.py`(GraphNodeRunV3 Literal) + `adapters/llm.py` purpose + `prompts/` → schema 3곳 → Backend `run_functional_uat_matrix.py` graph_trace 상한 → Frontend `decodeGraphTrace`·`labels.graphNodeLabel` |
 | Evidence 필드 | Data 모델 → 계약 생성 → Agent 사본·consumer → `check contract --repo ai_agent --cross` |
 | guidance registry | Data json → manifest 재생성 → Agent·Backend·Frontend 사본 3곳 |
 | LLM 설정 필드 | Agent `llm_settings.py` + 라우트 → Backend `admin_settings.py`·adapters·service → OpenAPI → Frontend `Admin.tsx` |
@@ -617,10 +639,13 @@ OpenAPI 문서 경로는 꺼져 있다.
 
 ---
 
-## 10. 남은 한계 (2026-09-11 기준)
+## 10. 남은 한계 (2026-09-14 기준)
 
 - **Browser E2E 중단**: 3절 참조. 다시 도입하려면 의존성 정책(ADR)을 먼저 정하고 Frontend 스크립트와 Backend runner를 함께 복원해야 한다.
-- **`Engine.kind`가 `claude`로 고정**: 2절 참조. OpenAI 사용 시 `model_id`만 실제 모델이다.
+- **감사 루프의 mismatch 재판독은 UAT(LLM 분석기)에서만 돈다**: 결정론 분석기는 재판독해도 같은 값을 내므로 local-dev는 누락·미근거 필드만 재추출한다.
+- **조문 그래프는 현행 조문 기준**: `five_stage_cpu`의 DELEGATES 확장은 `(law_id, article_no)`로 기준일 조문에 되돌려 매핑하므로 개정으로 번호가 바뀐 조문은 이웃에서 빠진다(추가 전용이라 정확도는 떨어지지 않음).
+- **five_stage_cpu·Kiwi 벤치마크 미실행(2026-09-14)**: 로컬 Docker가 꺼져 있어 law-history 저장소 재빌드와 100문항 recall 비교를 못 했다. 서버·로컬 모두 `build --as-of 2026-08-05 --retrieval-strategy five_stage_cpu --allow-unbenchmarked` 후 `verify-store`·벤치마크가 필요하다.
+- **Data venv의 torch가 CPU 빌드로 바뀜**: `uv add kiwipiepy` 뒤 `uv sync --locked`가 `torch 2.13.0+cu126`을 락 파일의 CPU 빌드로 교체했다. CUDA는 어차피 `--allow-cuda` 뒤에 있다.
 - **Agent importer는 `ANTHROPIC_API_KEY`만 읽는다**: 로컬에서 OpenAI로 띄우려면 키와 `CUSTOMS_AGENT_LLM_PROVIDER=openai`를 세션에 직접 넣는다.
 - **Frontend는 `temporal_context`를 표시하지 않는다**: 기준 시점 3날짜 패널은 React 전환 뒤 없어졌다.
 - **Data mypy 범위**: `pyproject`의 `files` 목록 밖 모듈(hybrid, repository, ingest, embed 등)은 타입 검사를 받지 않는다.
