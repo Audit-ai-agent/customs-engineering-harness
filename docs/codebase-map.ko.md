@@ -254,9 +254,11 @@ uv run --no-sync customs-backend-api
   (`_description_candidates_from_facts`): 서류를 여러 장 올려도 옆 셀("ROTTERDAM")이나 라벨 단어("goods")가 진짜 품명의 점수를 희석하거나 수백 개 코드와 동점을 만들지 않는다(2026-09-15). 심사 뒤에는 run 사실 기준
   `review-runs/{rid}/hs-classification`. 심사 시작 시 Case·run 확정 중 `selected_at`이 최신인 코드가 `reviewer_hs_selection`으로 Agent에 들어가므로
   첫 심사부터 법령 근거를 조회한다. Case 확정은 Case revision을 바꾸지 않는다(대기 중 심사의 멱등 식별 유지).
-  Case 단위 GET은 규칙 후보를 만든 뒤 `case_hs_shortlist`(인용 코드 + 품명 매칭 상위 40)를 Agent `POST /internal/agent/v3/hs-candidates`에 서류 텍스트와 함께 보내
-  순위·사유(`origin=llm_match`, `explanation`, `basis_kind=agent_ranked`)를 받는다(2026-09-15). Agent가 품목은 읽었지만 후보가 없으면 그 품목명·인용 코드로 목록을 다시 만들어 한 번 더 묻는다.
-  채택은 보낸 목록 안의 코드만이고 실패·`status!=ok`면 규칙 후보를 유지한다(`apply_agent_hs_picks`). 관세는 `CUSTOMS_BACKEND_DUTY_REFERENCE_DB`(SQLite)가 있으면 전체 관세율표를, 없으면
+  Case 단위 GET은 Agent `POST /internal/agent/v3/hs-candidates`를 **두 번** 부른다(2026-09-16). 1회차는 참조 후보 없이 서류 텍스트만 보내 Agent가 양식·언어와 무관하게
+  품목(`items`: 품명·문서·인용 코드·한국어 검색어 `search_terms`)을 읽고, Backend는 그 판독으로 `case_hs_shortlist(agent_items=…)`(인용 10자리 코드 → 검색어·6~9자리 인용 접두어의
+  `search_hs_reference` 결과 → 품명 어간 매칭, 상위 40)를 만든다. 2회차는 이 목록을 보내 순위·사유(`origin=llm_match`, `explanation`, `basis_kind=agent_ranked`)를 받는다.
+  정규식 품명 셀 추출(`_description_values`)은 Agent가 품목을 못 읽었거나 `status!=deterministic|unavailable`일 때만 shortlist를 만든다. 서류 tariff 줄의 인용 코드는 항상 유지된다.
+  채택은 보낸 목록 안의 코드만이고, 1회차 실패·`status!=ok`면 규칙 후보를, 2회차 실패면 Agent 판독으로 만든 후보(상위 10)를 유지한다(`apply_agent_hs_picks`). 관세는 `CUSTOMS_BACKEND_DUTY_REFERENCE_DB`(SQLite)가 있으면 전체 관세율표를, 없으면
   JSON 스냅샷을 쓴다. FTA는 협정국 원산지, C/O 존재, C/O 원산지 일치를 모두 만족해야 적용한다.
 - 영속: functional-uat는 전체 aggregate를 jsonb 1행에 저장하고, 마이그레이션 도구는 없다. **새 필드는 반드시 기본값을 가져야**
   과거 상태를 복원할 수 있다.
@@ -421,9 +423,11 @@ uv run --locked --no-sync --group dev --extra functional-uat customs-ai-agent-fu
 
 ### API (`/internal/agent/*`, Bearer 필수. 없으면 401, 틀리면 403. 모드 불일치는 403 `service_mode_mismatch`)
 
-- `POST /internal/agent/v3/hs-candidates`(2026-09-15): 확정 서류 텍스트 + Backend가 보낸 참조 후보(HSK10, ≤40) → 품목 추출(`items`)과 후보 중 순위·사유(`picks`). 모델은 목록 밖 코드를
-  낼 수 없고(`service/hs_candidates.py`가 검증), local-development는 `status=deterministic`, 제공자 실패는 `status=unavailable`. LLM purpose `hs_candidates`, 프롬프트 `hs_candidates_v1.txt`,
-  계약 `hs-candidates-request/response.schema.json`(backend 사본 + harness cross_contract). capability `hs_candidate_ranking`.
+- `POST /internal/agent/v3/hs-candidates`(2026-09-15, 2026-09-16 `search_terms`): 확정 서류 텍스트 + Backend가 보낸 참조 후보(HSK10, ≤40, **빈 목록 허용**) → 품목 추출(`items`:
+  description·document_ids·cited_hs_codes·`search_terms`(한국어 관세율표 용어, 품목 명사 먼저, ≤10))과 후보 중 순위·사유(`picks`). 참조 후보가 비면 추출만 하고 `picks`는 빈다(Backend의 1회차).
+  프롬프트는 텍스트 레이어·OCR 결과의 양식(라벨: 값, 번호 박스 서식, 표 셀 줄 단위)이 미리 정해져 있지 않다고 명시하고 고정 라벨·줄 위치가 아니라 의미로 품목을 찾게 한다.
+  모델은 목록 밖 코드를 낼 수 없고(`service/hs_candidates.py`가 검증), local-development는 `status=deterministic`, 제공자 실패는 `status=unavailable`. LLM purpose `hs_candidates`,
+  프롬프트 `hs_candidates_v1.txt`, 계약 `hs-candidates-request/response.schema.json`(backend 사본 + harness cross_contract). capability `hs_candidate_ranking`.
 | 그룹 | 엔드포인트 |
 |---|---|
 | health | `/health/live`, `/health/ready`(Data readiness 포함) |
