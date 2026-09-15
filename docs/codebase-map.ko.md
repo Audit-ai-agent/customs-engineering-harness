@@ -3,7 +3,7 @@
 5개 저장소를 매번 처음부터 읽지 않도록 한 곳에 정리한 레퍼런스다. 작업을 시작할 때 이 문서로 위치를
 잡고, 실제 수정 전에는 해당 파일을 직접 열어 확인한다. 이 문서는 요약이므로 코드와 다르면 코드가 맞다.
 
-- 기준 커밋(2026-09-16, 로컬): frontend `b5e7f72`, backend `75c5f9f`, ai-agent `92c8916`,
+- 기준 커밋(2026-09-16, 로컬): frontend `58e3dab`, backend `7416bd5`, ai-agent `92c8916`,
   data-platform `5e59e55` (서버 snapshot r25는 backend `6c0454e`·ai-agent `5cf295b`)
 - 명령의 정본은 각 저장소 README와 이 저장소의 [local setup](local-setup.md)·[runtime profiles](runtime-profiles.md)다.
 - 갱신: 경계·계약·디렉터리 구조가 바뀌는 PR을 병합하면 해당 절을 고친다. 미커밋 WIP나 개인 배포 상태는 여기 쓰지 않는다.
@@ -255,7 +255,9 @@ uv run --no-sync customs-backend-api
   `review-runs/{rid}/hs-classification`. 심사 시작 시 Case·run 확정 중 `selected_at`이 최신인 코드가 `reviewer_hs_selection`으로 Agent에 들어가므로
   첫 심사부터 법령 근거를 조회한다. Case 확정은 Case revision을 바꾸지 않는다(대기 중 심사의 멱등 식별 유지).
   Case 단위 GET은 기본적으로 서류 텍스트 후보와 확정 상태만 돌려주고(Agent 미호출), `?agent=true`일 때만 Agent `POST /internal/agent/v3/hs-candidates`를 **두 번** 부른다(2026-09-16).
-  프런트는 Case 열기·서류 등록·확정 뒤 자동 재조회에서 기본 호출을 쓰고, "AI로 HSK 후보 추출" 버튼(`refreshCaseHsClassification`)만 `agent=true`로 부른다. 1회차는 참조 후보 없이 서류 텍스트만 보내 Agent가 양식·언어와 무관하게
+  프런트는 Case 열기·서류 등록·확정 뒤 자동 재조회에서 기본 호출을 쓰고, "AI로 HSK 후보 추출" 버튼(`refreshCaseHsClassification`)만 `agent=true`로 부른다.
+  AI 순위 결과는 `CaseRecord.hs_agent_ranking`(`CaseHsAgentRankingRecord`: 문서 집합 digest·`ranked_at`·후보 ≤10, `record_case_hs_agent_ranking`)에 Case별로 저장되어 기본 호출도
+  같은 문서 집합이면 `basis_kind=agent_ranked`·`agent_ranked_at`으로 돌려준다. 문서가 추가·교체·재확정되면 digest가 달라져 텍스트 후보로 돌아가고, 다시 요청하면 새로 저장한다. 심사 사실·확정에는 쓰지 않는다. 1회차는 참조 후보 없이 서류 텍스트만 보내 Agent가 양식·언어와 무관하게
   품목(`items`: 품명·문서·인용 코드·한국어 검색어 `search_terms`)을 읽고, Backend는 그 판독으로 `case_hs_shortlist(agent_items=…)`(인용 10자리 코드 → 검색어·6~9자리 인용 접두어의
   `search_hs_reference` 결과 → 품명 어간 매칭, 상위 40)를 만든다. 2회차는 이 목록을 보내 순위·사유(`origin=llm_match`, `explanation`, `basis_kind=agent_ranked`)를 받는다.
   정규식 품명 셀 추출(`_description_values`)은 Agent가 품목을 못 읽었거나 `status!=deterministic|unavailable`일 때만 shortlist를 만든다. 서류 tariff 줄의 인용 코드는 항상 유지된다.
