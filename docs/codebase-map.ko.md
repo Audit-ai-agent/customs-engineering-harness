@@ -486,7 +486,8 @@ law_repository/src/
   retrieval_five_stage.py     제품 5단 검색: 질의 재작성(사전·앵커, LLM 없음) → 가중 RRF(변형 0.6) → DELEGATES 이웃 확장(시드 10, ≤15,
                               (law_id, article_no)→기준일 조문 매핑) → CPU cross-encoder(풀 30) → z(rerank)+2.0·z(RRF), score는 min-max
   lawgo.py                    법제처 DRF 클라이언트(JO 6자리)
-  ingest/{laws,hsk,ccct,graph}.py   조문·HSK·CCCT·조문 그래프 적재
+  ingest/{laws,hsk,ccct,graph}.py   조문·HSK·CCCT·조문 그래프 적재. `graph.build(as_of=)`는 기준일에 유효한 조문(valid_from ≤ as_of < valid_to)으로
+                              :Article 노드를 만든다(law-history 원장은 `is_current=false` 고정이라 플래그로는 0건). `as_of` 없이는 3법 로더의 `is_current`
   embed/{dense,bm25,rerank,model_identity}.py   bge-m3 / Kiwi 형태소 BM25(`ko-kiwi-md5-bm25/v2`, avgdl 141, 결합형 방출) / reranker, revision 고정
   law_history.py(+_spec)      65법령 시점 이력 프로필(수집, 영수증, 락, 복구, 백엔드)
   functional_uat.py(+_spec)   3law 프로필
@@ -643,8 +644,17 @@ OpenAPI 문서 경로는 꺼져 있다.
 
 - **Browser E2E 중단**: 3절 참조. 다시 도입하려면 의존성 정책(ADR)을 먼저 정하고 Frontend 스크립트와 Backend runner를 함께 복원해야 한다.
 - **감사 루프의 mismatch 재판독은 UAT(LLM 분석기)에서만 돈다**: 결정론 분석기는 재판독해도 같은 값을 내므로 local-dev는 누락·미근거 필드만 재추출한다.
-- **조문 그래프는 현행 조문 기준**: `five_stage_cpu`의 DELEGATES 확장은 `(law_id, article_no)`로 기준일 조문에 되돌려 매핑하므로 개정으로 번호가 바뀐 조문은 이웃에서 빠진다(추가 전용이라 정확도는 떨어지지 않음).
-- **five_stage_cpu·Kiwi 벤치마크 미실행(2026-09-14)**: 로컬 Docker가 꺼져 있어 law-history 저장소 재빌드와 100문항 recall 비교를 못 했다. 서버·로컬 모두 `build --as-of 2026-08-05 --retrieval-strategy five_stage_cpu --allow-unbenchmarked` 후 `verify-store`·벤치마크가 필요하다.
+- **조문 그래프는 빌드 기준일 조문 기준**: `five_stage_cpu`의 DELEGATES 확장은 `(law_id, article_no)`로 기준일 조문에 되돌려 매핑하므로 개정으로 번호가 바뀐 조문은 이웃에서 빠진다(추가 전용이라 정확도는 떨어지지 않음).
+  2026-09-15 수정 전에는 `graph.build()`가 `is_current`만 봐서 law-history 프로필의 그래프가 항상 0건이었다(DELEGATES 확장이 동작한 적 없음). refresh는 그래프를 다시 만들지 않으므로 개정 뒤 그래프는 마지막 build 시점 그대로다.
+- **reranker는 프로필 전용 캐시에 있어야 한다**: `embed/rerank.py`는 `runtime_model_cache_directory()`(`_local/cache/huggingface`)에서 `local_files_only`로만 읽는다. 사용자 HF 캐시(`~/.cache/huggingface`)에만 있으면 `cross_encoder_rerank_cpu`·`five_stage_cpu`가 재정렬 없이 degrade되고 벤치마크는 두 후보를 measured 불가로 기록한다. 로컬은 2026-09-15에 `models--BAAI--bge-reranker-v2-m3`(revision 953dc6f6)를 복사했고, 서버는 확인이 필요하다.
+- **five_stage_cpu 벤치마크 결과(2026-09-15, 로컬 8코어 CPU)**: 골드셋 100문항(`trade-doc-auditor/law_repository/data/eval/검색평가_100문항_20260810.xlsx` 골드셋 시트를
+  `_local/data/law-history-heldout/goldset-100-20260810.suite.json` + 승인 영수증으로 변환, 법령 ID 단위 strict recall)로 측정했다.
+  rrf_lexical r@5 0.77 / r@10 0.84 / p95 1.9s · cross_encoder_rerank_cpu 0.87 / 0.89 / p95 89.8s · five_stage_cpu 0.82 / 0.89 / p95 110s · kiwi_sparse 단독 0.63 / 0.70 / p95 53ms.
+  도구는 five_stage_cpu를 선택했지만(recall 비퇴행, p95 면제) CPU cross-encoder 때문에 서빙 지연이 Agent 근거 타임아웃(기본 90초, 최대 120초)을 넘는다
+  (`law-search` 실측 74~118초). GPU 없는 서버는 `rrf_lexical`로 빌드하거나 reranker 풀(30)·max_length(1024)를 줄여 다시 재야 한다.
+  세트는 개발 골드셋 그대로라 독립 held-out이 아니며, 결과 파일 `_local/state/law-history-benchmarks/20260915T004159Z-1bb0fc.json`은 manifest에 apply하지 않았다.
+- **Agent 로컬 venv에 functional-uat extra가 없으면 런타임이 비어 뜬다**: `openai` 패키지가 없으면 `ProfileRuntime`이 `functional_uat_claude_configuration_invalid`로 실패하고
+  서비스는 뜨되 `/health/ready`가 503(dependency_unready)이다. `uv sync --locked --group dev --extra functional-uat` 뒤 재기동한다(2026-09-15 로컬에서 겪음).
 - **Data venv의 torch가 CPU 빌드로 바뀜**: `uv add kiwipiepy` 뒤 `uv sync --locked`가 `torch 2.13.0+cu126`을 락 파일의 CPU 빌드로 교체했다. CUDA는 어차피 `--allow-cuda` 뒤에 있다.
 - **Agent importer는 `ANTHROPIC_API_KEY`만 읽는다**: 로컬에서 OpenAI로 띄우려면 키와 `CUSTOMS_AGENT_LLM_PROVIDER=openai`를 세션에 직접 넣는다.
 - **Frontend는 `temporal_context`를 표시하지 않는다**: 기준 시점 3날짜 패널은 React 전환 뒤 없어졌다.
