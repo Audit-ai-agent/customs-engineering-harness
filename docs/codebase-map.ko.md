@@ -587,7 +587,7 @@ OpenAPI 문서 경로는 꺼져 있다.
 | guidance 질의 | `guidance_v3.py`, `guidance_query_v3.schema.json` |
 | 65법령 목록·기준일·고정 해시 | `law_history_spec.py` |
 | 검색 순위 | `retrieval_five_stage.py`(제품), `hybrid.py`(프로토타입), `law_history_benchmark.py` |
-| 검색 전략 바인딩 | manifest `retrieval_strategy ∈ {rrf_lexical, cross_encoder_rerank, five_stage_cpu}`. `build --retrieval-strategy five_stage_cpu --allow-unbenchmarked`(개발) 또는 벤치마크 `--apply-result`. five_stage_cpu는 refresh에서 유지(디지스트만 초기화), p95 게이트 면제·recall ≥ baseline만 요구 |
+| 검색 전략 바인딩 | manifest `retrieval_strategy ∈ {rrf_lexical, cross_encoder_rerank, five_stage_cpu}`. `build --retrieval-strategy five_stage_cpu --allow-unbenchmarked`(개발) 또는 벤치마크 `--apply-result`. five_stage_cpu는 refresh에서 유지(디지스트만 초기화). 모든 후보가 recall ≥ baseline **과** p95 ≤ 1.10×baseline을 함께 만족해야 선택된다(2026-09-15 면제 제거, `LATENCY_EXEMPT_CANDIDATES`는 빈 집합) |
 | 임베딩·BM25 | `embed/model_identity.py`, `embed/bm25.py`(ENCODER_VERSION 변경 시 전체 재인덱싱; Kiwi 전환으로 v2, 기존 저장소는 `build` 재실행 필요) |
 | PG 스키마 | 새 `migrations/008_*.sql` |
 | 조문 그래프 규칙 | `ingest/graph.py`(extract_refs) |
@@ -602,6 +602,7 @@ OpenAPI 문서 경로는 꺼져 있다.
   - `check`는 마커가 현재 lock과 맞을 때만 저장소 소유 명령을 실행한다.
   - 저장소 선택자는 `frontend|backend|ai_agent|data_platform`이고, `customs-*` 이름도 받는다.
 - `config/workspace.toml`: 도구 버전(Python 3.11, Git 2.40+, Node 22.12+, npm 10.9.8), 저장소별 setup/quick/contract 명령, cross_contract 쌍.
+- `.nvmrc`(22.23.1): fnm/nvm 자동 전환용. 하네스는 이 저장소 폴더에서 실행되므로 frontend의 `.nvmrc`만으로는 Node 22가 잡히지 않아 `setup --repo frontend`가 EBADENGINE으로 실패했다(2026-09-15 추가).
 - `config/project-snapshot.toml`: clean main일 때 `git ls-files -s -z`의 SHA-256을 기록한다(현재 r16, 2026-09-11).
   병합된 기준선이 바뀌면 maintainer가 갱신한다. 검증은 untracked 파일도 dirty로 보므로 작업 파일이 있으면 실패한다.
 - `harness/validation_report.py`: 모든 저장소의 quick·contract 실행 결과, 계약 바이트, UAT·Gold 증거 인벤토리를
@@ -650,7 +651,7 @@ OpenAPI 문서 경로는 꺼져 있다.
 - **five_stage_cpu 벤치마크 결과(2026-09-15, 로컬 8코어 CPU)**: 골드셋 100문항(`trade-doc-auditor/law_repository/data/eval/검색평가_100문항_20260810.xlsx` 골드셋 시트를
   `_local/data/law-history-heldout/goldset-100-20260810.suite.json` + 승인 영수증으로 변환, 법령 ID 단위 strict recall)로 측정했다.
   rrf_lexical r@5 0.77 / r@10 0.84 / p95 1.9s · cross_encoder_rerank_cpu 0.87 / 0.89 / p95 89.8s · five_stage_cpu 0.82 / 0.89 / p95 110s · kiwi_sparse 단독 0.63 / 0.70 / p95 53ms.
-  도구는 five_stage_cpu를 선택했지만(recall 비퇴행, p95 면제) CPU cross-encoder 때문에 서빙 지연이 Agent 근거 타임아웃(기본 90초, 최대 120초)을 넘는다
+  당시 도구는 p95 면제 때문에 five_stage_cpu를 선택했지만(면제는 같은 날 제거, data `5e59e55`) CPU cross-encoder 때문에 서빙 지연이 Agent 근거 타임아웃(기본 90초, 최대 120초)을 넘는다
   (`law-search` 실측 74~118초). GPU 없는 서버는 `rrf_lexical`로 빌드하거나 reranker 풀(30)·max_length(1024)를 줄여 다시 재야 한다.
   세트는 개발 골드셋 그대로라 독립 held-out이 아니다. 결과 파일 `_local/state/law-history-benchmarks/20260915T004159Z-1bb0fc.json`.
   **서버 전략은 `rrf_lexical`로 확정(2026-09-15)**. 로컬 manifest는 재빌드 대신 `law_history.bind_law_history_retrieval_strategy(strategy="rrf_lexical", …)`를 직접 호출해
