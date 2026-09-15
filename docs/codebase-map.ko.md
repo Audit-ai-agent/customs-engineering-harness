@@ -249,7 +249,9 @@ uv run --no-sync customs-backend-api
   4. child가 성공해야 제안이 `applied`가 된다.
 - 원산지/관세(`trade_features.py`)는 저장된 Run에서 파생한다. HS 후보는 두 경로다: 심사 전에는 `cases/{id}/hs-classification`이 확정 서류 텍스트의
   세번(HS) 표기 줄에서 10자리 코드를(없으면 품명 매칭) 후보로 내고 확정을 `CaseRecord.hs_selection`에 기록한다(2026-09-15). 품명은 라벨 줄의 값과
-  표 머리글("Description of Goods") 아래 줄들(수량·단위 줄에서 정지)에서 읽는다(`_description_values`, 텍스트 레이어가 표 셀을 한 줄씩 내놓기 때문). 심사 뒤에는 run 사실 기준
+  표 머리글("Description of Goods", "⑪ Description of Goods"처럼 박스 번호가 앞에 붙어도) 아래 줄들에서 읽는다(`_description_values`, 텍스트 레이어가 표 셀을 한 줄씩 내놓기 때문.
+  수량·단위 셀은 건너뛰고 TOTAL·Gross Weight 같은 다음 라벨 셀에서 멈춘다. B/L은 "4 CNTR / 372 CTNS"가 품명보다 먼저 온다). 품명 매칭은 값마다 따로 점수를 내고 코드별로 합친다
+  (`_description_candidates_from_facts`): 서류를 여러 장 올려도 옆 셀("ROTTERDAM")이나 라벨 단어("goods")가 진짜 품명의 점수를 희석하거나 수백 개 코드와 동점을 만들지 않는다(2026-09-15). 심사 뒤에는 run 사실 기준
   `review-runs/{rid}/hs-classification`. 심사 시작 시 Case·run 확정 중 `selected_at`이 최신인 코드가 `reviewer_hs_selection`으로 Agent에 들어가므로
   첫 심사부터 법령 근거를 조회한다. Case 확정은 Case revision을 바꾸지 않는다(대기 중 심사의 멱등 식별 유지).
   Case 단위 GET은 규칙 후보를 만든 뒤 `case_hs_shortlist`(인용 코드 + 품명 매칭 상위 40)를 Agent `POST /internal/agent/v3/hs-candidates`에 서류 텍스트와 함께 보내
