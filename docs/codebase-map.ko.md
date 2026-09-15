@@ -3,7 +3,7 @@
 5개 저장소를 매번 처음부터 읽지 않도록 한 곳에 정리한 레퍼런스다. 작업을 시작할 때 이 문서로 위치를
 잡고, 실제 수정 전에는 해당 파일을 직접 열어 확인한다. 이 문서는 요약이므로 코드와 다르면 코드가 맞다.
 
-- 기준 커밋(2026-09-16, 로컬): frontend `baa490a`, backend `4c1d174`, ai-agent `92c8916`,
+- 기준 커밋(2026-09-16, 로컬): frontend `b5e7f72`, backend `75c5f9f`, ai-agent `92c8916`,
   data-platform `5e59e55` (서버 snapshot r25는 backend `6c0454e`·ai-agent `5cf295b`)
 - 명령의 정본은 각 저장소 README와 이 저장소의 [local setup](local-setup.md)·[runtime profiles](runtime-profiles.md)다.
 - 갱신: 경계·계약·디렉터리 구조가 바뀌는 PR을 병합하면 해당 절을 고친다. 미커밋 WIP나 개인 배포 상태는 여기 쓰지 않는다.
@@ -109,7 +109,7 @@ src/ui/Dashboard.tsx    심사 업무함(상태 그룹 표, 필터, Case 생성�
 src/ui/pages.tsx        Home, Laws, HskReference, Records, Metrics, Guide
 src/ui/stages.tsx       1단계 문서(업로드·추출·OCR 확정) / 2단계 교차검증 / 4단계 관세
 src/ui/Review.tsx       3단계 통관 심사: FindingList/FindingCard, DecisionPanel, CorrectionProposalPanel, CaseClosurePanel AdvisoryPanel은 약식/상세 트랙 설명·권고별 다음 조치·사유의 확인 사항/법령 근거 링크·분석 엔진을 표시(2026-09-15)
-src/ui/trade.tsx        HsClassificationCard(심사 전엔 Case 단위 서류 텍스트 후보 + "서류에서 HSK 후보 추출" 버튼, 심사 뒤엔 run 후보; HsPickerCard 공용. 확정은 사유 입력 없이 한 번에,
+src/ui/trade.tsx        HsClassificationCard(심사 전엔 Case 단위 서류 텍스트 후보 + "AI로 HSK 후보 추출" 버튼(이 버튼만 `?agent=true`로 Agent를 부름, 2026-09-16), 심사 뒤엔 run 후보; HsPickerCard 공용. 확정은 사유 입력 없이 한 번에,
                         사유는 선택 방식에서 자동 생성), OriginVerificationCard, DutyDiagnosisStage(세율 사다리)
 src/ui/History.tsx      실행 타임라인, 정정 제안 승인/반려, 재심사
 src/ui/Assistant.tsx    Case AI 도우미
@@ -254,7 +254,8 @@ uv run --no-sync customs-backend-api
   (`_description_candidates_from_facts`): 서류를 여러 장 올려도 옆 셀("ROTTERDAM")이나 라벨 단어("goods")가 진짜 품명의 점수를 희석하거나 수백 개 코드와 동점을 만들지 않는다(2026-09-15). 심사 뒤에는 run 사실 기준
   `review-runs/{rid}/hs-classification`. 심사 시작 시 Case·run 확정 중 `selected_at`이 최신인 코드가 `reviewer_hs_selection`으로 Agent에 들어가므로
   첫 심사부터 법령 근거를 조회한다. Case 확정은 Case revision을 바꾸지 않는다(대기 중 심사의 멱등 식별 유지).
-  Case 단위 GET은 Agent `POST /internal/agent/v3/hs-candidates`를 **두 번** 부른다(2026-09-16). 1회차는 참조 후보 없이 서류 텍스트만 보내 Agent가 양식·언어와 무관하게
+  Case 단위 GET은 기본적으로 서류 텍스트 후보와 확정 상태만 돌려주고(Agent 미호출), `?agent=true`일 때만 Agent `POST /internal/agent/v3/hs-candidates`를 **두 번** 부른다(2026-09-16).
+  프런트는 Case 열기·서류 등록·확정 뒤 자동 재조회에서 기본 호출을 쓰고, "AI로 HSK 후보 추출" 버튼(`refreshCaseHsClassification`)만 `agent=true`로 부른다. 1회차는 참조 후보 없이 서류 텍스트만 보내 Agent가 양식·언어와 무관하게
   품목(`items`: 품명·문서·인용 코드·한국어 검색어 `search_terms`)을 읽고, Backend는 그 판독으로 `case_hs_shortlist(agent_items=…)`(인용 10자리 코드 → 검색어·6~9자리 인용 접두어의
   `search_hs_reference` 결과 → 품명 어간 매칭, 상위 40)를 만든다. 2회차는 이 목록을 보내 순위·사유(`origin=llm_match`, `explanation`, `basis_kind=agent_ranked`)를 받는다.
   정규식 품명 셀 추출(`_description_values`)은 Agent가 품목을 못 읽었거나 `status!=deterministic|unavailable`일 때만 shortlist를 만든다. 서류 tariff 줄의 인용 코드는 항상 유지된다.
@@ -271,7 +272,7 @@ uv run --no-sync customs-backend-api
 | documents | POST(R)/GET `cases/{id}/documents`, GET `…/documents/{doc}/content` |
 | assets | POST(R)/GET `cases/{id}/document-assets`; `…/{asset}/extractions`, `raster-extractions`, `raster-text-extractions`(POST는 R, GET `/{job}`); GET `…/raster-extractions/{id}/pages/{n}`, `…/source`; POST `…/confirmed-document`(R) |
 | reviews | POST `cases/{id}/reviews`(R, Idempotency-Key), GET `jobs/{id}`, `cases/{id}/review-runs`, `review-runs/{rid}` |
-| trade | GET/POST(R) `cases/{cid}/hs-classification`(심사 전 Case 단위. GET은 Agent `hs-candidates`로 AI 순위를 붙임, 실패 시 규칙 후보), GET/POST(R) `review-runs/{rid}/hs-classification`, GET `…/origin-verification`, `…/duty-assessment`, GET `hsk-reference?q=`, `hsk-reference/{code}` |
+| trade | GET/POST(R) `cases/{cid}/hs-classification`(심사 전 Case 단위. GET `?agent=true`면 Agent `hs-candidates`로 AI 순위를 붙임, 기본·실패 시 규칙 후보), GET/POST(R) `review-runs/{rid}/hs-classification`, GET `…/origin-verification`, `…/duty-assessment`, GET `hsk-reference?q=`, `hsk-reference/{code}` |
 | decisions | PUT `review-runs/{rid}/findings/{fid}/decision`(R) |
 | assistant | POST/GET `review-runs/{rid}/assistant/conversations`, POST(Idempotency-Key)/GET `assistant/conversations/{cid}/messages` |
 | knowledge | POST/GET `knowledge/conversations`, POST/GET `knowledge/conversations/{cid}/messages` |
