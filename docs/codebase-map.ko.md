@@ -109,10 +109,10 @@ src/ui/Dashboard.tsx    심사 업무함(상태 그룹 표, 필터, Case 생성�
 src/ui/pages.tsx        Home, Laws, HskReference, Records, Metrics, Guide
 src/ui/stages.tsx       1단계 문서(업로드·추출·OCR 확정) / 2단계 교차검증 / 4단계 관세
 src/ui/Review.tsx       3단계 통관 심사: FindingList/FindingCard, DecisionPanel, CorrectionProposalPanel, CaseClosurePanel
-src/ui/trade.tsx        HsClassificationCard, OriginVerificationCard, DutyDiagnosisStage(세율 사다리)
+src/ui/trade.tsx        HsClassificationCard(심사 전엔 Case 단위 서류 텍스트 후보, 심사 뒤엔 run 후보; HsPickerCard 공용), OriginVerificationCard, DutyDiagnosisStage(세율 사다리)
 src/ui/History.tsx      실행 타임라인, 정정 제안 승인/반려, 재심사
 src/ui/Assistant.tsx    Case AI 도우미
-src/ui/StateFlow.tsx    상태 전이 SVG + 담당자 업무 6단계
+src/ui/StateFlow.tsx    상태 전이 SVG + 담당자 업무 7단계(2 서류 등록 → 3 HSK 확정 → 4 AI 심사)
 src/ui/ReportPrint.tsx  보고서 PDF 저장: 인쇄 전용 보고서 사본을 body 끝에 portal로 붙이고 window.print() (PDF는 브라우저 인쇄 대상)
 src/ui/nextSteps.ts     "이어서 할 일" 행 계산(nextStepRows)·comparisonFor. Review.tsx와 ReportPrint.tsx가 공유
 src/ui/Admin.tsx        숨김 #/admin LLM 설정
@@ -196,7 +196,7 @@ adapters.py             HttpAgentClient(유일한 Agent 전송), CallableAgentCl
 auth.py                 OidcJwtVerifier(JWKS, RS256/ES256), StaticTokenVerifier, require_roles
 agent_contract.py       패키지된 Agent V3 schema 검증
 guidance_registry.py    Agent 답변 인용이 등록된 공식 출처인지 검증
-trade_features.py       HS 후보, HSK 검색, 원산지 검증(FTA hint), 관세 진단
+trade_features.py       HS 후보(run 사실 기준 build_hs_classification, 서류 텍스트 기준 build_case_hs_classification), HSK 검색, 원산지 검증(FTA hint), 관세 진단
 duty_reference.py       SQLite 전체 관세율표, _FTA_AGREEMENT_PAGES(협정별 fta.go.kr URL)
 law_reference.py        법령 검색/카탈로그(Agent 경유)
 operations_metrics.py   운영 지표(review_load 포함)
@@ -246,8 +246,10 @@ uv run --no-sync customs-backend-api
   2. approver가 승인한다. **작성자 본인은 승인할 수 없다.**
   3. approver가 `POST /review-runs/{rid}/revisions`로 child Run을 만든다. `human_corrections`가 Agent로 전달된다.
   4. child가 성공해야 제안이 `applied`가 된다.
-- HS/원산지/관세(`trade_features.py`)는 저장된 Run에서 파생한다. reviewer가 확정한 HS(`hs_selection`)는 다음 심사 요청에
-  `reviewer_hs_selection`으로 들어간다. 관세는 `CUSTOMS_BACKEND_DUTY_REFERENCE_DB`(SQLite)가 있으면 전체 관세율표를, 없으면
+- 원산지/관세(`trade_features.py`)는 저장된 Run에서 파생한다. HS 후보는 두 경로다: 심사 전에는 `cases/{id}/hs-classification`이 확정 서류 텍스트의
+  세번(HS) 표기 줄에서 10자리 코드를(없으면 품명 매칭) 후보로 내고 확정을 `CaseRecord.hs_selection`에 기록한다(2026-09-15). 심사 뒤에는 run 사실 기준
+  `review-runs/{rid}/hs-classification`. 심사 시작 시 Case·run 확정 중 `selected_at`이 최신인 코드가 `reviewer_hs_selection`으로 Agent에 들어가므로
+  첫 심사부터 법령 근거를 조회한다. Case 확정은 Case revision을 바꾸지 않는다(대기 중 심사의 멱등 식별 유지). 관세는 `CUSTOMS_BACKEND_DUTY_REFERENCE_DB`(SQLite)가 있으면 전체 관세율표를, 없으면
   JSON 스냅샷을 쓴다. FTA는 협정국 원산지, C/O 존재, C/O 원산지 일치를 모두 만족해야 적용한다.
 - 영속: functional-uat는 전체 aggregate를 jsonb 1행에 저장하고, 마이그레이션 도구는 없다. **새 필드는 반드시 기본값을 가져야**
   과거 상태를 복원할 수 있다.
@@ -260,7 +262,7 @@ uv run --no-sync customs-backend-api
 | documents | POST(R)/GET `cases/{id}/documents`, GET `…/documents/{doc}/content` |
 | assets | POST(R)/GET `cases/{id}/document-assets`; `…/{asset}/extractions`, `raster-extractions`, `raster-text-extractions`(POST는 R, GET `/{job}`); GET `…/raster-extractions/{id}/pages/{n}`, `…/source`; POST `…/confirmed-document`(R) |
 | reviews | POST `cases/{id}/reviews`(R, Idempotency-Key), GET `jobs/{id}`, `cases/{id}/review-runs`, `review-runs/{rid}` |
-| trade | GET/POST(R) `review-runs/{rid}/hs-classification`, GET `…/origin-verification`, `…/duty-assessment`, GET `hsk-reference?q=`, `hsk-reference/{code}` |
+| trade | GET/POST(R) `cases/{cid}/hs-classification`(심사 전 Case 단위), GET/POST(R) `review-runs/{rid}/hs-classification`, GET `…/origin-verification`, `…/duty-assessment`, GET `hsk-reference?q=`, `hsk-reference/{code}` |
 | decisions | PUT `review-runs/{rid}/findings/{fid}/decision`(R) |
 | assistant | POST/GET `review-runs/{rid}/assistant/conversations`, POST(Idempotency-Key)/GET `assistant/conversations/{cid}/messages` |
 | knowledge | POST/GET `knowledge/conversations`, POST/GET `knowledge/conversations/{cid}/messages` |
@@ -316,7 +318,7 @@ uv run --no-sync customs-backend-api
 | 저장 필드 추가 | `domain.py`(기본값 필수), `repository.py`, `functional_repository.py` restore/serialize |
 | 환경변수 추가 | `settings.py`, `local_profile.py`, `tools/Import-LocalProfile.ps1` allowlist, `tests/product/test_local_profiles.py` |
 | 관세·FTA | `duty_reference.py`, `trade_features.py`(build_duty_assessment, _fta_hints), `reference/`, `tools/build_duty_reference.py` |
-| HS·원산지 | `trade_features.py`(build_hs_classification, build_origin_verification) |
+| HS·원산지 | `trade_features.py`(build_case_hs_classification, build_hs_classification, build_origin_verification) |
 | 지표 | `operations_metrics.py`, `tests/product/test_operations_metrics.py` |
 | LLM 관리자 | `admin_settings.py`, `service.py`, `adapters.py` `_LLM_SETTINGS_PATH`, `tests/product/test_admin_llm_settings.py` |
 | Keycloak realm·테마 | `local_profile.py`, `functional_uat_branding.py`, `deploy/functional-uat/keycloak-themes/` |
@@ -383,6 +385,9 @@ uv run --locked --no-sync --group dev --extra functional-uat customs-ai-agent-fu
      필수 필드 누락/인용 미확인(`_reextraction_targets`) + UAT에서만 mismatch 재판독·LLM 재판독 요청 → 있으면
      `extraction_agent`로 되돌아간다(`loop_reason`). LLM(purpose `finding_classification`)은 오류 유형 분류·설명만 덧붙인다(fail-open).
   3. `evidence_retrieval`: Data `/retrieve` 1회 일괄 호출(프로필이 주입한 `_evidence_stage`). law-history면 `law_as_of == review_as_of` 요구.
+     조회 품목은 `workflow.retrieval_plan_from_analyses`가 문서 사실의 `hs_code`로 만든다. Data는 HSK10 정확 일치 또는 HS6 단일 leaf만 해소하므로
+     문서의 6·8자리 코드는 `reviewer_hs_selection`이 접두어와 맞을 때 그 10자리로 완성한다(2026-09-15, agent `45d0c21`; 이전에는 문서에 코드가 하나라도 있으면
+     담당자 확정을 버렸다). 서로 다른 코드는 덮어쓰지 않는다. 문서에 코드가 전혀 없으면 확정 코드가 유일한 조회 품목이 된다.
   4. `expert_review_agent`: 신뢰도·review_track(`CUSTOMS_AGENT_CONFIDENCE_THRESHOLD`, 기본 0.8), 권고 판정(mismatch high →
      ineligible, 요건·needs_review·partial·근거 없음·낮은 신뢰도 → indeterminate, 그 외 eligible). UAT면 LLM(purpose `expert_review`)이
      더 엄격한 쪽으로만 바꿀 수 있고 인용 ID가 결과에 없으면 무시된다. `requires_human_review`는 항상 true.
