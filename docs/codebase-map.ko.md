@@ -3,7 +3,7 @@
 5개 저장소를 매번 처음부터 읽지 않도록 한 곳에 정리한 레퍼런스다. 작업을 시작할 때 이 문서로 위치를
 잡고, 실제 수정 전에는 해당 파일을 직접 열어 확인한다. 이 문서는 요약이므로 코드와 다르면 코드가 맞다.
 
-- 기준 커밋(2026-09-15, snapshot r21): frontend `88762d8`, backend `3df0637`, ai-agent `45d0c21`,
+- 기준 커밋(2026-09-15, snapshot r22): frontend `8dd1a5e`, backend `3df0637`, ai-agent `45d0c21`,
   data-platform `5e59e55`
 - 명령의 정본은 각 저장소 README와 이 저장소의 [local setup](local-setup.md)·[runtime profiles](runtime-profiles.md)다.
 - 갱신: 경계·계약·디렉터리 구조가 바뀌는 PR을 병합하면 해당 절을 고친다. 미커밋 WIP나 개인 배포 상태는 여기 쓰지 않는다.
@@ -109,7 +109,7 @@ src/ui/Dashboard.tsx    심사 업무함(상태 그룹 표, 필터, Case 생성�
 src/ui/pages.tsx        Home, Laws, HskReference, Records, Metrics, Guide
 src/ui/stages.tsx       1단계 문서(업로드·추출·OCR 확정) / 2단계 교차검증 / 4단계 관세
 src/ui/Review.tsx       3단계 통관 심사: FindingList/FindingCard, DecisionPanel, CorrectionProposalPanel, CaseClosurePanel
-src/ui/trade.tsx        HsClassificationCard(심사 전엔 Case 단위 서류 텍스트 후보, 심사 뒤엔 run 후보; HsPickerCard 공용), OriginVerificationCard, DutyDiagnosisStage(세율 사다리)
+src/ui/trade.tsx        HsClassificationCard(심사 전엔 Case 단위 서류 텍스트 후보 + "서류에서 HSK 후보 추출" 버튼, 심사 뒤엔 run 후보; HsPickerCard 공용), OriginVerificationCard, DutyDiagnosisStage(세율 사다리)
 src/ui/History.tsx      실행 타임라인, 정정 제안 승인/반려, 재심사
 src/ui/Assistant.tsx    Case AI 도우미
 src/ui/StateFlow.tsx    상태 전이 SVG + 담당자 업무 7단계(2 서류 등록 → 3 HSK 확정 → 4 AI 심사)
