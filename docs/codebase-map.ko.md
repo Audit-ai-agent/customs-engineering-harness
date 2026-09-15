@@ -652,7 +652,9 @@ OpenAPI 문서 경로는 꺼져 있다.
   rrf_lexical r@5 0.77 / r@10 0.84 / p95 1.9s · cross_encoder_rerank_cpu 0.87 / 0.89 / p95 89.8s · five_stage_cpu 0.82 / 0.89 / p95 110s · kiwi_sparse 단독 0.63 / 0.70 / p95 53ms.
   도구는 five_stage_cpu를 선택했지만(recall 비퇴행, p95 면제) CPU cross-encoder 때문에 서빙 지연이 Agent 근거 타임아웃(기본 90초, 최대 120초)을 넘는다
   (`law-search` 실측 74~118초). GPU 없는 서버는 `rrf_lexical`로 빌드하거나 reranker 풀(30)·max_length(1024)를 줄여 다시 재야 한다.
-  세트는 개발 골드셋 그대로라 독립 held-out이 아니며, 결과 파일 `_local/state/law-history-benchmarks/20260915T004159Z-1bb0fc.json`은 manifest에 apply하지 않았다.
+  세트는 개발 골드셋 그대로라 독립 held-out이 아니다. 결과 파일 `_local/state/law-history-benchmarks/20260915T004159Z-1bb0fc.json`.
+  **서버 전략은 `rrf_lexical`로 확정(2026-09-15)**. 로컬 manifest는 재빌드 대신 `law_history.bind_law_history_retrieval_strategy(strategy="rrf_lexical", …)`를 직접 호출해
+  벤치마크 digest와 함께 재바인딩했다(`--apply-result`는 도구가 고른 후보만 바인딩). rrf_lexical law-search 실측 2.2~2.5초. 서버는 `build --as-of 2026-08-05`(기본 rrf_lexical)로 빌드한다.
 - **Agent 로컬 venv에 functional-uat extra가 없으면 런타임이 비어 뜬다**: `openai` 패키지가 없으면 `ProfileRuntime`이 `functional_uat_claude_configuration_invalid`로 실패하고
   서비스는 뜨되 `/health/ready`가 503(dependency_unready)이다. `uv sync --locked --group dev --extra functional-uat` 뒤 재기동한다(2026-09-15 로컬에서 겪음).
 - **Data venv의 torch가 CPU 빌드로 바뀜**: `uv add kiwipiepy` 뒤 `uv sync --locked`가 `torch 2.13.0+cu126`을 락 파일의 CPU 빌드로 교체했다. CUDA는 어차피 `--allow-cuda` 뒤에 있다.
