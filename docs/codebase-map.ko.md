@@ -251,7 +251,10 @@ uv run --no-sync customs-backend-api
   세번(HS) 표기 줄에서 10자리 코드를(없으면 품명 매칭) 후보로 내고 확정을 `CaseRecord.hs_selection`에 기록한다(2026-09-15). 품명은 라벨 줄의 값과
   표 머리글("Description of Goods") 아래 줄들(수량·단위 줄에서 정지)에서 읽는다(`_description_values`, 텍스트 레이어가 표 셀을 한 줄씩 내놓기 때문). 심사 뒤에는 run 사실 기준
   `review-runs/{rid}/hs-classification`. 심사 시작 시 Case·run 확정 중 `selected_at`이 최신인 코드가 `reviewer_hs_selection`으로 Agent에 들어가므로
-  첫 심사부터 법령 근거를 조회한다. Case 확정은 Case revision을 바꾸지 않는다(대기 중 심사의 멱등 식별 유지). 관세는 `CUSTOMS_BACKEND_DUTY_REFERENCE_DB`(SQLite)가 있으면 전체 관세율표를, 없으면
+  첫 심사부터 법령 근거를 조회한다. Case 확정은 Case revision을 바꾸지 않는다(대기 중 심사의 멱등 식별 유지).
+  Case 단위 GET은 규칙 후보를 만든 뒤 `case_hs_shortlist`(인용 코드 + 품명 매칭 상위 40)를 Agent `POST /internal/agent/v3/hs-candidates`에 서류 텍스트와 함께 보내
+  순위·사유(`origin=llm_match`, `explanation`, `basis_kind=agent_ranked`)를 받는다(2026-09-15). Agent가 품목은 읽었지만 후보가 없으면 그 품목명·인용 코드로 목록을 다시 만들어 한 번 더 묻는다.
+  채택은 보낸 목록 안의 코드만이고 실패·`status!=ok`면 규칙 후보를 유지한다(`apply_agent_hs_picks`). 관세는 `CUSTOMS_BACKEND_DUTY_REFERENCE_DB`(SQLite)가 있으면 전체 관세율표를, 없으면
   JSON 스냅샷을 쓴다. FTA는 협정국 원산지, C/O 존재, C/O 원산지 일치를 모두 만족해야 적용한다.
 - 영속: functional-uat는 전체 aggregate를 jsonb 1행에 저장하고, 마이그레이션 도구는 없다. **새 필드는 반드시 기본값을 가져야**
   과거 상태를 복원할 수 있다.
@@ -264,7 +267,7 @@ uv run --no-sync customs-backend-api
 | documents | POST(R)/GET `cases/{id}/documents`, GET `…/documents/{doc}/content` |
 | assets | POST(R)/GET `cases/{id}/document-assets`; `…/{asset}/extractions`, `raster-extractions`, `raster-text-extractions`(POST는 R, GET `/{job}`); GET `…/raster-extractions/{id}/pages/{n}`, `…/source`; POST `…/confirmed-document`(R) |
 | reviews | POST `cases/{id}/reviews`(R, Idempotency-Key), GET `jobs/{id}`, `cases/{id}/review-runs`, `review-runs/{rid}` |
-| trade | GET/POST(R) `cases/{cid}/hs-classification`(심사 전 Case 단위), GET/POST(R) `review-runs/{rid}/hs-classification`, GET `…/origin-verification`, `…/duty-assessment`, GET `hsk-reference?q=`, `hsk-reference/{code}` |
+| trade | GET/POST(R) `cases/{cid}/hs-classification`(심사 전 Case 단위. GET은 Agent `hs-candidates`로 AI 순위를 붙임, 실패 시 규칙 후보), GET/POST(R) `review-runs/{rid}/hs-classification`, GET `…/origin-verification`, `…/duty-assessment`, GET `hsk-reference?q=`, `hsk-reference/{code}` |
 | decisions | PUT `review-runs/{rid}/findings/{fid}/decision`(R) |
 | assistant | POST/GET `review-runs/{rid}/assistant/conversations`, POST(Idempotency-Key)/GET `assistant/conversations/{cid}/messages` |
 | knowledge | POST/GET `knowledge/conversations`, POST/GET `knowledge/conversations/{cid}/messages` |
@@ -415,6 +418,10 @@ uv run --locked --no-sync --group dev --extra functional-uat customs-ai-agent-fu
   `insufficient_evidence`로 끝나고 모델 지식으로 채우지 않는다.
 
 ### API (`/internal/agent/*`, Bearer 필수. 없으면 401, 틀리면 403. 모드 불일치는 403 `service_mode_mismatch`)
+
+- `POST /internal/agent/v3/hs-candidates`(2026-09-15): 확정 서류 텍스트 + Backend가 보낸 참조 후보(HSK10, ≤40) → 품목 추출(`items`)과 후보 중 순위·사유(`picks`). 모델은 목록 밖 코드를
+  낼 수 없고(`service/hs_candidates.py`가 검증), local-development는 `status=deterministic`, 제공자 실패는 `status=unavailable`. LLM purpose `hs_candidates`, 프롬프트 `hs_candidates_v1.txt`,
+  계약 `hs-candidates-request/response.schema.json`(backend 사본 + harness cross_contract). capability `hs_candidate_ranking`.
 | 그룹 | 엔드포인트 |
 |---|---|
 | health | `/health/live`, `/health/ready`(Data readiness 포함) |
