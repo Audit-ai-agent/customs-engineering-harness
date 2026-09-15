@@ -3,7 +3,7 @@
 5개 저장소를 매번 처음부터 읽지 않도록 한 곳에 정리한 레퍼런스다. 작업을 시작할 때 이 문서로 위치를
 잡고, 실제 수정 전에는 해당 파일을 직접 열어 확인한다. 이 문서는 요약이므로 코드와 다르면 코드가 맞다.
 
-- 기준 커밋(2026-09-15, snapshot r19): frontend `18df101`, backend `3562248`, ai-agent `98fa138`,
+- 기준 커밋(2026-09-15, snapshot r20): frontend `88762d8`, backend `40fdbb0`, ai-agent `45d0c21`,
   data-platform `5e59e55`
 - 명령의 정본은 각 저장소 README와 이 저장소의 [local setup](local-setup.md)·[runtime profiles](runtime-profiles.md)다.
 - 갱신: 경계·계약·디렉터리 구조가 바뀌는 PR을 병합하면 해당 절을 고친다. 미커밋 WIP나 개인 배포 상태는 여기 쓰지 않는다.
