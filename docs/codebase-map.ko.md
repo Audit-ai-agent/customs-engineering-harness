@@ -102,13 +102,17 @@ src/api/v1/types.ts     API 타입(수작업. OpenAPI 생성 코드 아님)
 src/api/user-facing-errors.ts  상태/오류 코드 → 한국어 안내문
 src/ui/constants.ts     StageView/SitePage, STAGES, SITE_PAGES, HIDDEN_PAGES, parseRoute
 src/ui/store.ts         WorkbenchStore: 전체 상태·라우팅·모든 액션(파일 하나, 약 1,800줄). useSyncExternalStore
-src/ui/labels.ts        한국어 표시 매핑: display(), RULE_TITLES, FIELD_LABELS, DECISION_REASON_OPTIONS, 조사 교정
+src/ui/labels.ts        한국어 표시 매핑: display(), RULE_TITLES, FIELD_LABELS, DECISION_REASON_OPTIONS, 조사 교정, 통관 요건 근거 판독
+                        (parseRequirementEvidence: Data의 고정 문장 "HSK … import 요건: …"을 필드로 되읽음)·법령 근거 출처 링크(evidenceSourceHref:
+                        customs_requirement나 data.go.kr API 주소는 법제처 `law.go.kr/법령/법령명`으로 보냄, 2026-09-17)
 src/ui/App.tsx          셸, PageScreen 라우터, CaseScreen(4단계 워크스페이스), 단축키
 src/ui/Chrome.tsx       Topbar, GlobalNav, CaseSubNav, Hero(PAGE_HERO)
 src/ui/Dashboard.tsx    심사 업무함(상태 그룹 표, 필터, Case 생성·삭제)
 src/ui/pages.tsx        Home, Laws, HskReference, Records, Metrics, Guide
 src/ui/stages.tsx       1단계 문서(업로드·추출·OCR 확정) / 2단계 교차검증 / 4단계 관세
 src/ui/Review.tsx       3단계 통관 심사: FindingList/FindingCard, DecisionPanel, CorrectionProposalPanel, CaseClosurePanel AdvisoryPanel은 약식/상세 트랙 설명·권고별 다음 조치·사유의 확인 사항/법령 근거 링크·분석 엔진을 표시(2026-09-15)
+                        EvidenceList의 통관 요건 카드는 RequirementSummaryView(문장+대상 품목/확인 법령/필요 확인서류/요건승인기관, 원문은 접힘)로 그리고
+                        출처는 EvidenceSourceLink(primitives.tsx)가 법제처로 연결(2026-09-17). ReportPrint.tsx도 같은 헬퍼를 쓴다
 src/ui/trade.tsx        HsClassificationCard(심사 전엔 Case 단위 서류 텍스트 후보 + "AI로 HSK 후보 추출" 버튼(이 버튼만 `?agent=true`로 Agent를 부름, 2026-09-16), 심사 뒤엔 run 후보; HsPickerCard 공용. 확정은 사유 입력 없이 한 번에,
                         사유는 선택 방식에서 자동 생성), OriginVerificationCard, DutyDiagnosisStage(세율 사다리)
 src/ui/History.tsx      실행 타임라인, 정정 제안 승인/반려, 재심사
@@ -172,6 +176,7 @@ tests/*.test.ts         Vitest+jsdom 7개(workbench, review, stages, admin, api-
 | 규칙/필드/상태 라벨 | `labels.ts`(RULE_TITLES, FIELD_LABELS, display, workflowLabel) |
 | 판단 사유 프리셋 | `labels.ts` DECISION_REASON_OPTIONS + `types.ts` FindingDecisionReasonCode (Backend enum과 함께) |
 | 확인 사항 카드 | `Review.tsx`(FindingCard, Collapsible), `review.css`, `tests/review.test.ts` |
+| 법령 근거 카드·출처 링크 | `Review.tsx`(EvidenceList), `primitives.tsx`(EvidenceSourceLink, RequirementSummaryView), `labels.ts`(evidenceSourceHref, parseRequirementEvidence), `components.css` `.evidence-requirement*`, `tests/review.test.ts` "법령정보" |
 | 보고서 PDF 출력 내용·서식 | `ReportPrint.tsx`(ReportPrintView), `print.css`, `tests/review.test.ts` "보고서 PDF 저장". PDF 라이브러리 없음(CSP) |
 | 새 API 호출 | `types.ts` → `decoders.ts` → `client.ts` → `store.ts` → `dev/preview.ts` 스텁 → `tests/api-client.test.ts` |
 | 오류 문구 | `src/api/user-facing-errors.ts` |
