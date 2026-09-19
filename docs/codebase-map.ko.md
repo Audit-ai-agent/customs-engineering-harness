@@ -3,7 +3,7 @@
 5개 저장소를 매번 처음부터 읽지 않도록 한 곳에 정리한 레퍼런스다. 작업을 시작할 때 이 문서로 위치를
 잡고, 실제 수정 전에는 해당 파일을 직접 열어 확인한다. 이 문서는 요약이므로 코드와 다르면 코드가 맞다.
 
-- 기준 커밋(2026-09-16, 로컬): frontend `58e3dab`, backend `7416bd5`, ai-agent `92c8916`,
+- 기준 커밋(2026-09-20, 로컬): frontend `58d62f2`, backend `7416bd5`, ai-agent `247efbd`,
   data-platform `5e59e55` (서버 snapshot r25는 backend `6c0454e`·ai-agent `5cf295b`)
 - 명령의 정본은 각 저장소 README와 이 저장소의 [local setup](local-setup.md)·[runtime profiles](runtime-profiles.md)다.
 - 갱신: 경계·계약·디렉터리 구조가 바뀌는 PR을 병합하면 해당 절을 고친다. 미커밋 WIP나 개인 배포 상태는 여기 쓰지 않는다.
@@ -111,6 +111,7 @@ src/ui/Dashboard.tsx    심사 업무함(상태 그룹 표, 필터, Case 생성�
 src/ui/pages.tsx        Home, Laws, HskReference, Records, Metrics, Guide
 src/ui/stages.tsx       1단계 문서(업로드·추출·OCR 확정) / 2단계 교차검증 / 4단계 관세
 src/ui/Review.tsx       3단계 통관 심사: FindingList/FindingCard, DecisionPanel, CorrectionProposalPanel, CaseClosurePanel AdvisoryPanel은 약식/상세 트랙 설명·권고별 다음 조치·사유의 확인 사항/법령 근거 링크·분석 엔진을 표시(2026-09-15)
+                        CorrectionProposalPanel은 도우미 초안이 없으면 선택 문서 소속 사실(labels.correctionTargetForFinding)과 그 item_id를 보낸다(2026-09-20)
                         EvidenceList의 통관 요건 카드는 RequirementSummaryView(문장+대상 품목/확인 법령/필요 확인서류/요건승인기관, 원문은 접힘)로 그리고
                         출처는 EvidenceSourceLink(primitives.tsx)가 법제처로 연결(2026-09-17). ReportPrint.tsx도 같은 헬퍼를 쓴다
 src/ui/trade.tsx        HsClassificationCard(심사 전엔 Case 단위 서류 텍스트 후보 + "AI로 HSK 후보 추출" 버튼(이 버튼만 `?agent=true`로 Agent를 부름, 2026-09-16), 심사 뒤엔 run 후보; HsPickerCard 공용. 확정은 사유 입력 없이 한 번에,
@@ -409,6 +410,15 @@ uv run --locked --no-sync --group dev --extra functional-uat customs-ai-agent-fu
      ineligible, 요건·needs_review·partial·근거 없음·낮은 신뢰도 → indeterminate, 그 외 eligible). UAT면 LLM(purpose `expert_review`)이
      더 엄격한 쪽으로만 바꿀 수 있고 인용 ID가 결과에 없으면 무시된다. `requires_human_review`는 항상 true.
   5. `report_generation`: required_actions와 결정론 8구역 보고서. 기능 UAT 문장 합성(`_compose_functional_report`)은 검증 뒤 profiles에서.
+- 화면 문장 검사(`service/user_text.py` `reviewer_text_is_safe`, 2026-09-20)
+  - 결과의 `*_id|*_code|…` 값은 **토큰 경계로만** 막는다. `law_id` "23"이 있어도 "관세법 제232조"는 통과한다.
+  - 영문 약어 허용 목록에 HSK·KGS·CTN(S)·PKG(S)·BOX·NET·GROSS를 더했다.
+  - 도우미 답변이 걸리면 고정 문구로 대체된다. 보고서는 걸린 **구역만** 결정론 문장으로 바꾼다(이전에는 8구역 전체).
+  - 결정론 '법령 근거' 구역은 비교 ID가 아니라 evidence_ids를 인용하고 법령명을 3개까지 적는다.
+- 정정 반영 자식 Run(`workflow.py` `_correction_target_item`)은 서류를 LLM으로 다시 추출한다. 그래서 필드 순서가 들어간 사실 ID가 바뀔 수 있다.
+  - 품목 사실 ID(`…:item:N:field:name:k`)가 자식에 없으면 같은 품목에 반영한다. 같은 이름의 사실이 둘 이상이면 ambiguous로 거절한다.
+  - 필드 자체가 빠진 경우도 같은 품목에 반영한다. 사실 ID가 다른 품목을 가리키면 지금처럼 거절한다(2026-09-20).
+- `container_numbers`에 ISO 6346 번호(`[A-Z]{4}\d{7}`)가 없으면 정규화 값이 None이 된다. 따라서 비교 결과는 mismatch가 아니라 needs_review다. 예: 카톤 표시 "C/NO. 1-101".
 - stage 8종: classify, extract, normalize, match, validate, reextract, retrieve_evidence, generate_result.
   planner는 최대 2 cycle, 6 action 그대로다(예비 비교는 planner에 기록하지 않고 `graph_trace`에만 남는다). `graph_trace`는
   iteration ≤ 2, node_runs ≤ 8.
