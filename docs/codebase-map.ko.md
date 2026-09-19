@@ -3,7 +3,7 @@
 5개 저장소를 매번 처음부터 읽지 않도록 한 곳에 정리한 레퍼런스다. 작업을 시작할 때 이 문서로 위치를
 잡고, 실제 수정 전에는 해당 파일을 직접 열어 확인한다. 이 문서는 요약이므로 코드와 다르면 코드가 맞다.
 
-- 기준 커밋(2026-09-20, 로컬): frontend `58d62f2`, backend `7416bd5`, ai-agent `247efbd`,
+- 기준 커밋(2026-09-20, 로컬): frontend `58d62f2`, backend `62360ca`, ai-agent `44665c0`,
   data-platform `5e59e55` (서버 snapshot r25는 backend `6c0454e`·ai-agent `5cf295b`)
 - 명령의 정본은 각 저장소 README와 이 저장소의 [local setup](local-setup.md)·[runtime profiles](runtime-profiles.md)다.
 - 갱신: 경계·계약·디렉터리 구조가 바뀌는 PR을 병합하면 해당 절을 고친다. 미커밋 WIP나 개인 배포 상태는 여기 쓰지 않는다.
@@ -251,7 +251,7 @@ uv run --no-sync customs-backend-api
 - 보정 제안 → 재심사
   1. reviewer가 제안한다.
   2. approver가 승인한다. **작성자 본인은 승인할 수 없다.**
-  3. approver가 `POST /review-runs/{rid}/revisions`로 child Run을 만든다. `human_corrections`가 Agent로 전달된다.
+  3. approver가 `POST /review-runs/{rid}/revisions`로 child Run을 만든다. `human_corrections`와 부모 run의 `document_analyses`(`parent_document_analyses`, 2026-09-20)가 Agent로 전달된다.
   4. child가 성공해야 제안이 `applied`가 된다.
 - 원산지/관세(`trade_features.py`)는 저장된 Run에서 파생한다. HS 후보는 두 경로다: 심사 전에는 `cases/{id}/hs-classification`이 확정 서류 텍스트의
   세번(HS) 표기 줄에서 10자리 코드를(없으면 품명 매칭) 후보로 내고 확정을 `CaseRecord.hs_selection`에 기록한다(2026-09-15). 품명은 라벨 줄의 값과
@@ -415,9 +415,11 @@ uv run --locked --no-sync --group dev --extra functional-uat customs-ai-agent-fu
   - 영문 약어 허용 목록에 HSK·KGS·CTN(S)·PKG(S)·BOX·NET·GROSS를 더했다.
   - 도우미 답변이 걸리면 고정 문구로 대체된다. 보고서는 걸린 **구역만** 결정론 문장으로 바꾼다(이전에는 8구역 전체).
   - 결정론 '법령 근거' 구역은 비교 ID가 아니라 evidence_ids를 인용하고 법령명을 3개까지 적는다.
-- 정정 반영 자식 Run(`workflow.py` `_correction_target_item`)은 서류를 LLM으로 다시 추출한다. 그래서 필드 순서가 들어간 사실 ID가 바뀔 수 있다.
-  - 품목 사실 ID(`…:item:N:field:name:k`)가 자식에 없으면 같은 품목에 반영한다. 같은 이름의 사실이 둘 이상이면 ambiguous로 거절한다.
-  - 필드 자체가 빠진 경우도 같은 품목에 반영한다. 사실 ID가 다른 품목을 가리키면 지금처럼 거절한다(2026-09-20).
+- 정정 반영 자식 Run은 부모 추출을 재사용한다(2026-09-20, agent `44665c0`·backend `62360ca`).
+  - Backend가 자식 요청에 부모 run의 `document_analyses`를 `parent_document_analyses`로 싣는다. review-request 계약에 추가된 선택 필드이며 원본 객체 그대로 보낸다(manifest 해시 일치).
+  - Agent `_reused_parent_analyses`가 문서 ID 집합과 모든 원문 인용을 입력 문서와 대조한다. 맞으면 `extraction_agent`가 LLM 추출·재판독을 건너뛰고, 사람 사실만 얹어 비교·근거·보고서를 다시 돈다. 어긋나면 `parent_document_analyses_invalid`로 실패한다.
+  - 따라서 고치지 않은 필드의 판정은 바뀌지 않는다. 손자 Run은 이전 사람 사실을 이어받고, 비교는 가장 나중 사람 사실을 쓴다(`_first_fact`).
+  - 이 필드가 없는 요청(이전 Backend)은 예전처럼 다시 추출한다. 그때 `_correction_target_item`이 순서가 바뀌었거나 빠진 품목 사실을 같은 품목에 반영한다. 같은 이름의 사실이 둘 이상이면 ambiguous, 다른 품목을 가리키면 거절한다.
 - `container_numbers`에 ISO 6346 번호(`[A-Z]{4}\d{7}`)가 없으면 정규화 값이 None이 된다. 따라서 비교 결과는 mismatch가 아니라 needs_review다. 예: 카톤 표시 "C/NO. 1-101".
 - stage 8종: classify, extract, normalize, match, validate, reextract, retrieve_evidence, generate_result.
   planner는 최대 2 cycle, 6 action 그대로다(예비 비교는 planner에 기록하지 않고 `graph_trace`에만 남는다). `graph_trace`는
