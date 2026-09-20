@@ -3,7 +3,7 @@
 5개 저장소를 매번 처음부터 읽지 않도록 한 곳에 정리한 레퍼런스다. 작업을 시작할 때 이 문서로 위치를
 잡고, 실제 수정 전에는 해당 파일을 직접 열어 확인한다. 이 문서는 요약이므로 코드와 다르면 코드가 맞다.
 
-- 기준 커밋(2026-09-20, 로컬): frontend `58d62f2`, backend `62360ca`, ai-agent `44665c0`,
+- 기준 커밋(2026-09-20, 로컬): frontend `58d62f2`, backend `62360ca`, ai-agent `b83e691`,
   data-platform `5e59e55` (서버 snapshot r25는 backend `6c0454e`·ai-agent `5cf295b`)
 - 명령의 정본은 각 저장소 README와 이 저장소의 [local setup](local-setup.md)·[runtime profiles](runtime-profiles.md)다.
 - 갱신: 경계·계약·디렉터리 구조가 바뀌는 PR을 병합하면 해당 절을 고친다. 미커밋 WIP나 개인 배포 상태는 여기 쓰지 않는다.
@@ -484,6 +484,7 @@ uv run --locked --no-sync --group dev --extra functional-uat customs-ai-agent-fu
   파일시스템 테스트 약 84건이 실패한다.
 - `LLM_SETTINGS`는 import할 때 만들어지는 모듈 전역이다. env를 바꾸는 테스트끼리 상태를 공유하므로 주의한다.
 - `contracts/schemas/backend/v3/*.json`의 바이트를 바꾸면 Backend 사본, harness cross 검사, `/metadata`의 sha가 함께 바뀐다.
+- 심사 요청에 필드를 더하면 `service/input.py`의 `_ALLOWED_REQUEST_FIELDS`(와 필요하면 `_inspect_child_context`의 상한)도 같이 고친다. 입구 검사는 pydantic보다 먼저 돌아서, 빠뜨리면 실행 전에 422 `request_invalid`가 난다(2026-09-20).
 - 보고서와 답변 문구를 바꾸면 Backend의 `test_functional_uat_matrix_identity.py`가 깨질 수 있다.
 
 ### 변경 색인
