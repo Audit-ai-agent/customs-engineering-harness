@@ -3,8 +3,8 @@
 5개 저장소를 매번 처음부터 읽지 않도록 한 곳에 정리한 레퍼런스다. 작업을 시작할 때 이 문서로 위치를
 잡고, 실제 수정 전에는 해당 파일을 직접 열어 확인한다. 이 문서는 요약이므로 코드와 다르면 코드가 맞다.
 
-- 기준 커밋(2026-09-20, 로컬): frontend `58d62f2`, backend `62360ca`, ai-agent `b83e691`,
-  data-platform `5e59e55` (서버 snapshot r25는 backend `6c0454e`·ai-agent `5cf295b`)
+- 기준 커밋(2026-09-30, 로컬·미push): frontend `8fb5fd7`, backend `9860436`, ai-agent `4342903`,
+  data-platform `5e59e55` (서버에는 2026-09-20 기준 frontend `58d62f2`·backend `62360ca`·ai-agent `b83e691`이 올라가 있음; snapshot r25는 backend `6c0454e`·ai-agent `5cf295b`)
 - 명령의 정본은 각 저장소 README와 이 저장소의 [local setup](local-setup.md)·[runtime profiles](runtime-profiles.md)다.
 - 갱신: 경계·계약·디렉터리 구조가 바뀌는 PR을 병합하면 해당 절을 고친다. 미커밋 WIP나 개인 배포 상태는 여기 쓰지 않는다.
 
@@ -115,7 +115,8 @@ src/ui/Review.tsx       3단계 통관 심사: FindingList/FindingCard, Decision
                         EvidenceList의 통관 요건 카드는 RequirementSummaryView(문장+대상 품목/확인 법령/필요 확인서류/요건승인기관, 원문은 접힘)로 그리고
                         출처는 EvidenceSourceLink(primitives.tsx)가 법제처로 연결(2026-09-17). ReportPrint.tsx도 같은 헬퍼를 쓴다
 src/ui/trade.tsx        HsClassificationCard(심사 전엔 Case 단위 서류 텍스트 후보 + "AI로 HSK 후보 추출" 버튼(이 버튼만 `?agent=true`로 Agent를 부름, 2026-09-16), 심사 뒤엔 run 후보; HsPickerCard 공용. 확정은 사유 입력 없이 한 번에,
-                        사유는 선택 방식에서 자동 생성), OriginVerificationCard, DutyDiagnosisStage(세율 사다리)
+                        사유는 선택 방식에서 자동 생성). Case 뷰에 `items`가 있으면 품목마다 `[data-hsk-item]` 패널(품명·근거 문서·서류 기재 코드·후보·검색·확정)을 그리고
+                        확정은 `recordCaseHsSelection(code, reason, {item_id, description})`로 품목 단위(2026-09-30); 후보 목록+검색+확정 폼은 HsChoicePanel 공용. OriginVerificationCard, DutyDiagnosisStage(세율 사다리)
 src/ui/History.tsx      실행 타임라인, 정정 제안 승인/반려, 재심사
 src/ui/Assistant.tsx    Case AI 도우미
 src/ui/StateFlow.tsx    상태 전이 SVG + 담당자 업무 7단계(2 서류 등록 → 3 HSK 확정 → 4 AI 심사)
@@ -258,8 +259,15 @@ uv run --no-sync customs-backend-api
   표 머리글("Description of Goods", "⑪ Description of Goods"처럼 박스 번호가 앞에 붙어도) 아래 줄들에서 읽는다(`_description_values`, 텍스트 레이어가 표 셀을 한 줄씩 내놓기 때문.
   수량·단위 셀은 건너뛰고 TOTAL·Gross Weight 같은 다음 라벨 셀에서 멈춘다. B/L은 "4 CNTR / 372 CTNS"가 품명보다 먼저 온다). 품명 매칭은 값마다 따로 점수를 내고 코드별로 합친다
   (`_description_candidates_from_facts`): 서류를 여러 장 올려도 옆 셀("ROTTERDAM")이나 라벨 단어("goods")가 진짜 품명의 점수를 희석하거나 수백 개 코드와 동점을 만들지 않는다(2026-09-15). 심사 뒤에는 run 사실 기준
-  `review-runs/{rid}/hs-classification`. 심사 시작 시 Case·run 확정 중 `selected_at`이 최신인 코드가 `reviewer_hs_selection`으로 Agent에 들어가므로
+  `review-runs/{rid}/hs-classification`. 심사 시작 시 Case·run·품목 확정 중 `selected_at`이 최신인 코드가 `reviewer_hs_selection`으로 Agent에 들어가므로
   첫 심사부터 법령 근거를 조회한다. Case 확정은 Case revision을 바꾸지 않는다(대기 중 심사의 멱등 식별 유지).
+  **한 서류에 여러 품목(2026-09-30)**: Case 단위 뷰는 `items[]`(`CaseHsItemView`: `item_id`·description·document_ids·cited_hs_codes·후보 ≤5·selection)로 같은 판독을 품목별로
+  나눈다. 규칙 경로는 서류 인용 10자리 코드마다 한 품목(`code-<코드>`), 코드가 없으면 품명 셀 값마다 한 품목(`item-<품명 해시>`, 후보 없는 값은 제외). Agent 경로는 1회차 판독
+  `items`를 `agent_hs_items`가 품명 해시 `item_id`로 병합하고(`case_hs_item_id`), `case_hs_item_shortlists`가 품목마다 참조 후보 ≤20을 만든 뒤 2회차 요청에 `items[].reference_candidates`로
+  실어 품목별 순위(`picks[].item_id`)를 받는다(`apply_agent_hs_item_picks`; item_id 없는 답은 Case 전체 순위로 각 품목에 배분). 저장 순위 `hs_agent_ranking.items`에도 품목이 들어간다.
+  확정은 `CaseRecord.hs_item_selections`(`HsSelectionRecord`에 `item_id`·`description`, 품목당 이력 유지, `record_case_hs_item_selection`)에 품목별로 쌓이고, 뷰에는 `with_item_selections`가
+  item_id → 정규화 품명 순으로 붙인다(현재 판독에 없는 확정 품목은 후보 없이 그대로 나열). 심사 요청에는 `reviewer_hs_selections[]`(item_id·description 포함, 품목 확정이 있을 때만)와
+  최신 하나인 `reviewer_hs_selection`이 같이 들어간다. 기존 `candidates`·`selection`(Case 전체)은 그대로다.
   Case 단위 GET은 기본적으로 서류 텍스트 후보와 확정 상태만 돌려주고(Agent 미호출), `?agent=true`일 때만 Agent `POST /internal/agent/v3/hs-candidates`를 **두 번** 부른다(2026-09-16).
   프런트는 Case 열기·서류 등록·확정 뒤 자동 재조회에서 기본 호출을 쓰고, "AI로 HSK 후보 추출" 버튼(`refreshCaseHsClassification`)만 `agent=true`로 부른다.
   AI 순위 결과는 `CaseRecord.hs_agent_ranking`(`CaseHsAgentRankingRecord`: 문서 집합 digest·`ranked_at`·후보 ≤10, `record_case_hs_agent_ranking`)에 Case별로 저장되어 기본 호출도
@@ -280,7 +288,7 @@ uv run --no-sync customs-backend-api
 | documents | POST(R)/GET `cases/{id}/documents`, GET `…/documents/{doc}/content` |
 | assets | POST(R)/GET `cases/{id}/document-assets`; `…/{asset}/extractions`, `raster-extractions`, `raster-text-extractions`(POST는 R, GET `/{job}`); GET `…/raster-extractions/{id}/pages/{n}`, `…/source`; POST `…/confirmed-document`(R) |
 | reviews | POST `cases/{id}/reviews`(R, Idempotency-Key), GET `jobs/{id}`, `cases/{id}/review-runs`, `review-runs/{rid}` |
-| trade | GET/POST(R) `cases/{cid}/hs-classification`(심사 전 Case 단위. GET `?agent=true`면 Agent `hs-candidates`로 AI 순위를 붙임, 기본·실패 시 규칙 후보), GET/POST(R) `review-runs/{rid}/hs-classification`, GET `…/origin-verification`, `…/duty-assessment`, GET `hsk-reference?q=`, `hsk-reference/{code}` |
+| trade | GET/POST(R) `cases/{cid}/hs-classification`(심사 전 Case 단위. GET `?agent=true`면 Agent `hs-candidates`로 AI 순위를 붙임, 기본·실패 시 규칙 후보. 응답 `items[]`는 품목별 후보·확정, POST에 `item_id`+`description`을 주면 그 품목만 확정(2026-09-30)), GET/POST(R) `review-runs/{rid}/hs-classification`, GET `…/origin-verification`, `…/duty-assessment`, GET `hsk-reference?q=`, `hsk-reference/{code}` |
 | decisions | PUT `review-runs/{rid}/findings/{fid}/decision`(R) |
 | assistant | POST/GET `review-runs/{rid}/assistant/conversations`, POST(Idempotency-Key)/GET `assistant/conversations/{cid}/messages` |
 | knowledge | POST/GET `knowledge/conversations`, POST/GET `knowledge/conversations/{cid}/messages` |
@@ -404,7 +412,7 @@ uv run --locked --no-sync --group dev --extra functional-uat customs-ai-agent-fu
      `extraction_agent`로 되돌아간다(`loop_reason`). LLM(purpose `finding_classification`)은 오류 유형 분류·설명만 덧붙인다(fail-open).
   3. `evidence_retrieval`: Data `/retrieve` 1회 일괄 호출(프로필이 주입한 `_evidence_stage`). law-history면 `law_as_of == review_as_of` 요구.
      조회 품목은 `workflow.retrieval_plan_from_analyses`가 문서 사실의 `hs_code`로 만든다. Data는 HSK10 정확 일치 또는 HS6 단일 leaf만 해소하므로
-     문서의 6·8자리 코드는 `reviewer_hs_selection`이 접두어와 맞을 때 그 10자리로 완성한다(2026-09-15, agent `45d0c21`; 이전에는 문서에 코드가 하나라도 있으면
+     문서의 6·8자리 코드는 `reviewer_hs_selection`(또는 품목별 `reviewer_hs_selections[]` 중 접두어가 맞는 것, 품명이 가장 비슷한 것 우선)이 접두어와 맞을 때 그 10자리로 완성한다(2026-09-15, agent `45d0c21`; 이전에는 문서에 코드가 하나라도 있으면
      담당자 확정을 버렸다). 서로 다른 코드는 덮어쓰지 않는다. 문서에 코드가 전혀 없으면 확정 코드가 유일한 조회 품목이 된다.
   4. `expert_review_agent`: 신뢰도·review_track(`CUSTOMS_AGENT_CONFIDENCE_THRESHOLD`, 기본 0.8), 권고 판정(mismatch high →
      ineligible, 요건·needs_review·partial·근거 없음·낮은 신뢰도 → indeterminate, 그 외 eligible). UAT면 LLM(purpose `expert_review`)이
@@ -443,9 +451,14 @@ uv run --locked --no-sync --group dev --extra functional-uat customs-ai-agent-fu
 
 ### API (`/internal/agent/*`, Bearer 필수. 없으면 401, 틀리면 403. 모드 불일치는 403 `service_mode_mismatch`)
 
-- `POST /internal/agent/v3/hs-candidates`(2026-09-15, 2026-09-16 `search_terms`): 확정 서류 텍스트 + Backend가 보낸 참조 후보(HSK10, ≤40, **빈 목록 허용**) → 품목 추출(`items`:
+- 품목별 확정(2026-09-30): 심사 요청의 `reviewer_hs_selections[]`(`item_id`·`description` 선택 필드, ≤20; `service/input.py` 허용 목록에 포함)는 `retrieval_plan_from_analyses`에서
+  ① 접두어 완성, ② 코드 없는 line item에 품명 유사도(토큰 겹침 ≥0.5, `_selection_for_description`)로 코드 부여, ③ 어느 줄에도 안 붙은 품목 확정은 그 자체로 조회 품목 추가,
+  ④ 문서에 코드가 전혀 없으면 확정마다 조회 품목. item_id 없는 Case 전체 확정은 예전 규칙 그대로(문서 인용 코드와 다르면 추가하지 않음). `retrieval_reviewer_hs_code`는 적용 코드를 ", "로 이은 문자열.
+- `POST /internal/agent/v3/hs-candidates`(2026-09-15, 2026-09-16 `search_terms`, 2026-09-30 `items`): 확정 서류 텍스트 + Backend가 보낸 참조 후보(HSK10, ≤40, **빈 목록 허용**) → 품목 추출(`items`:
   description·document_ids·cited_hs_codes·`search_terms`(한국어 관세율표 용어, 품목 명사 먼저, ≤10))과 후보 중 순위·사유(`picks`). 참조 후보가 비면 추출만 하고 `picks`는 빈다(Backend의 1회차).
   프롬프트는 텍스트 레이어·OCR 결과의 양식(라벨: 값, 번호 박스 서식, 표 셀 줄 단위)이 미리 정해져 있지 않다고 명시하고 고정 라벨·줄 위치가 아니라 의미로 품목을 찾게 한다.
+  요청에 `items[]`(item_id·description·document_ids·cited_hs_codes·품목별 `reference_candidates` ≤20)가 있으면 품목마다 그 목록 안에서만 순위를 내고 `picks[].item_id`로 돌려준다(품목당 `max_picks`, 전체 ≤200;
+  응답 `items[].item_id`는 요청 품목을 되돌려 줌). 프롬프트는 한 서류의 여러 상품을 품목별로 나누고 같은 상품의 반복 줄은 합치라고 명시한다.
   모델은 목록 밖 코드를 낼 수 없고(`service/hs_candidates.py`가 검증), local-development는 `status=deterministic`, 제공자 실패는 `status=unavailable`. LLM purpose `hs_candidates`,
   프롬프트 `hs_candidates_v1.txt`, 계약 `hs-candidates-request/response.schema.json`(backend 사본 + harness cross_contract). capability `hs_candidate_ranking`.
 | 그룹 | 엔드포인트 |
