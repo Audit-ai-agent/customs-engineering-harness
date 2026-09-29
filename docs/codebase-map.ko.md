@@ -3,7 +3,7 @@
 5개 저장소를 매번 처음부터 읽지 않도록 한 곳에 정리한 레퍼런스다. 작업을 시작할 때 이 문서로 위치를
 잡고, 실제 수정 전에는 해당 파일을 직접 열어 확인한다. 이 문서는 요약이므로 코드와 다르면 코드가 맞다.
 
-- 기준 커밋(2026-09-30, 로컬·미push): frontend `8fb5fd7`, backend `9860436`, ai-agent `4342903`,
+- 기준 커밋(2026-09-30): frontend `9fdf4c7`, backend `7142b7f`(시연 폴백, 로컬·미push; 서버에는 frontend `8fb5fd7`·backend `9860436`까지), ai-agent `4342903`,
   data-platform `5e59e55` (서버에는 2026-09-20 기준 frontend `58d62f2`·backend `62360ca`·ai-agent `b83e691`이 올라가 있음; snapshot r25는 backend `6c0454e`·ai-agent `5cf295b`)
 - 명령의 정본은 각 저장소 README와 이 저장소의 [local setup](local-setup.md)·[runtime profiles](runtime-profiles.md)다.
 - 갱신: 경계·계약·디렉터리 구조가 바뀌는 PR을 병합하면 해당 절을 고친다. 미커밋 WIP나 개인 배포 상태는 여기 쓰지 않는다.
@@ -122,7 +122,7 @@ src/ui/Assistant.tsx    Case AI 도우미
 src/ui/StateFlow.tsx    상태 전이 SVG + 담당자 업무 7단계(2 서류 등록 → 3 HSK 확정 → 4 AI 심사)
 src/ui/ReportPrint.tsx  보고서 PDF 저장: 인쇄 전용 보고서 사본을 body 끝에 portal로 붙이고 window.print() (PDF는 브라우저 인쇄 대상)
 src/ui/nextSteps.ts     "이어서 할 일" 행 계산(nextStepRows)·comparisonFor. Review.tsx와 ReportPrint.tsx가 공유
-src/ui/Admin.tsx        숨김 #/admin LLM 설정
+src/ui/Admin.tsx        숨김 #/admin LLM 설정 + 시연 폴백(DemoFallbackCard: 모드 끄기/자동/항상 라디오, 재생 대기 시간, 등록 세트 표, Case→심사 실행 선택 후 등록; 승인자만, 2026-09-30)
 src/*.css               styles.css → components → krds → motion → stages → review → print (import 순서 = 캐스케이드)
                         print.css는 @media print에서 .report-print만 남기고 나머지 body 자식을 숨긴다
 scripts/                check-static-boundaries.mjs(=lint), check-contract.mjs, sync-backend-openapi.mjs, doctor.mjs
@@ -249,6 +249,12 @@ uv run --no-sync customs-backend-api
   - 사유 코드 `FindingDecisionReasonCode` 7종: `document_verified, notation_difference, supplement_requested,
     correction_proposed, requirement_satisfied, requirement_not_applicable, other`. 라벨은 `FINDING_DECISION_REASON_LABELS`.
   - `other`나 코드가 없으면 reason 필수. 프리셋이면 라벨을 reason으로 저장한다. 이력은 최대 100개.
+- **시연 폴백(2026-09-30)**: 승인자가 `#/admin`에서 완료된 심사 run을 여러 개 `DemoFallbackSetRecord`(서류 content_sha256 집합 + `_agent_result_snapshot(run)` 결과 + Case의
+  `hs_agent_ranking`)로 등록한다. `_run_review`는 `_review_with_demo_fallback`을 거친다: 모드 `off`면 항상 Agent, `auto`면 Agent 호출이 예외로 끝났을 때만, `always`면 무조건, 새 Case의
+  확정 문서 digest 집합이 등록 세트와 **정확히 같을 때** 저장된 결과를 재생한다(`_replay_demo_fallback`: 문서/Case/run ID를 문자열 치환으로 새 ID에 재바인딩, review_as_of·
+  temporal_context.law_as_of·input_manifest_sha256을 새 요청 값으로, `result_sha256` 재계산 → `_build_run`의 검증을 그대로 통과). 자식 run(정정 재심사)은 폴백을 쓰지 않는다.
+  `delay_seconds`(기본 4초)만큼 sleep해 진행 화면이 자연스럽게 보이게 한다. Case HSK `?agent=true`도 같은 규칙으로 저장된 순위를 재생한다(`_demo_fallback_hs_view`, Case에 저장).
+  사용 횟수·마지막 사용 시각을 세트에 기록한다. 결과에 폴백 표식은 없다(심사 화면은 실제 결과와 동일하게 보임). 도우미(assistant) 답변은 폴백 대상이 아니다.
 - 보정 제안 → 재심사
   1. reviewer가 제안한다.
   2. approver가 승인한다. **작성자 본인은 승인할 수 없다.**
@@ -294,7 +300,7 @@ uv run --no-sync customs-backend-api
 | knowledge | POST/GET `knowledge/conversations`, POST/GET `knowledge/conversations/{cid}/messages` |
 | corrections | POST(R)/GET `review-runs/{rid}/correction-proposals`, PUT `correction-proposals/{id}/decision`(A), POST `review-runs/{rid}/revisions`(A, Idempotency-Key) |
 | reference·metrics | GET `law-search`, `laws`, `operations-metrics` |
-| admin | GET/PUT/DELETE `admin/llm-settings`, POST `admin/llm-settings/test`(모두 A) |
+| admin | GET/PUT/DELETE `admin/llm-settings`, POST `admin/llm-settings/test`(모두 A); GET/PUT `admin/demo-fallback`(모드·delay_seconds), POST `admin/demo-fallback/sets`(name+review_run_id로 완료 run 등록), DELETE `admin/demo-fallback/sets/{id}`(모두 A, 2026-09-30) |
 | health | `/health/live`, `/health/ready`, `/health/functional-uat-ready` |
 
 오류는 `application/problem+json`으로 돌려준다.
@@ -347,6 +353,7 @@ uv run --no-sync customs-backend-api
 | HS·원산지 | `trade_features.py`(build_case_hs_classification, build_hs_classification, build_origin_verification) |
 | 지표 | `operations_metrics.py`, `tests/product/test_operations_metrics.py` |
 | LLM 관리자 | `admin_settings.py`, `service.py`, `adapters.py` `_LLM_SETTINGS_PATH`, `tests/product/test_admin_llm_settings.py` |
+| 시연 폴백 | `domain.py`(DemoFallback*), `repository.py`/`functional_repository.py`(`demo_fallback_sets`·`demo_fallback_settings` 영속 키), `service.py`(`_review_with_demo_fallback`, `_replay_demo_fallback`, `_demo_fallback_hs_view`, admin 메서드), `api.py`, `tests/product/test_demo_fallback.py` |
 | Keycloak realm·테마 | `local_profile.py`, `functional_uat_branding.py`, `deploy/functional-uat/keycloak-themes/` |
 
 ---
