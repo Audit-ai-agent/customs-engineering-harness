@@ -3,7 +3,7 @@
 5개 저장소를 매번 처음부터 읽지 않도록 한 곳에 정리한 레퍼런스다. 작업을 시작할 때 이 문서로 위치를
 잡고, 실제 수정 전에는 해당 파일을 직접 열어 확인한다. 이 문서는 요약이므로 코드와 다르면 코드가 맞다.
 
-- 기준 커밋(2026-10-09): frontend `66a04e1`, backend `11bb2f2`(시연 폴백 파일 세트·추출 재생, 로컬·미push·미배포), ai-agent `4342903`,
+- 기준 커밋(2026-10-09): frontend `66a04e1`, backend `11bb2f2`(시연 폴백 파일 세트·추출 재생) + 이름 2차 매칭 `1b98f4d`(로컬·미push·미배포), ai-agent `4342903`,
   data-platform `5e59e55` (서버에는 2026-09-20 기준 frontend `58d62f2`·backend `62360ca`·ai-agent `b83e691`이 올라가 있음; snapshot r25는 backend `6c0454e`·ai-agent `5cf295b`)
 - 명령의 정본은 각 저장소 README와 이 저장소의 [local setup](local-setup.md)·[runtime profiles](runtime-profiles.md)다.
 - 갱신: 경계·계약·디렉터리 구조가 바뀌는 PR을 병합하면 해당 절을 고친다. 미커밋 WIP나 개인 배포 상태는 여기 쓰지 않는다.
@@ -262,6 +262,8 @@ uv run --no-sync customs-backend-api
   - 파일로 세트 만들기(2026-10-09, 프런트 전용 조합): `#/admin` 폼에서 파일 여러 개+유형(파일명 추정)을 고르면 store `prepareDemoFallbackSet`이 준비용 Case
     `[시연 폴백 준비] 이름`을 만들고 업로드→추출→기본 텍스트 그대로 확정→`hs-classification?agent=true`→심사→세트 등록→Case 삭제를 기존 API로 순서대로 부른다(실패해도 Case는 지움).
     심사자+승인자 역할이 모두 필요하다. 시연 때는 같은 파일을 올리고 추출 텍스트를 고치지 않고 확정해야 재생된다.
+  - 이름 2차 매칭(2026-10-09): 내용 해시로 맞는 세트가 없을 때만 이름으로 찾는다(대소문자 무시). 추출은 업로드 파일명이 세트의 원본 파일명과 같으면 저장 텍스트를 새 파일의
+    `source_sha256`·`byte_size`로 재바인딩해 재생한다(매체 유형·쪽 수 검증은 그대로). HSK·심사는 확정 문서 파일명 집합이 정확히 같으면 재생하고, 문서 ID는 `_demo_fallback_replacements`(해시 우선, 다음 이름)로 잇는다.
 - 보정 제안 → 재심사
   1. reviewer가 제안한다.
   2. approver가 승인한다. **작성자 본인은 승인할 수 없다.**
