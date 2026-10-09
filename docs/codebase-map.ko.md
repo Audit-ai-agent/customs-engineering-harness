@@ -3,7 +3,7 @@
 5개 저장소를 매번 처음부터 읽지 않도록 한 곳에 정리한 레퍼런스다. 작업을 시작할 때 이 문서로 위치를
 잡고, 실제 수정 전에는 해당 파일을 직접 열어 확인한다. 이 문서는 요약이므로 코드와 다르면 코드가 맞다.
 
-- 기준 커밋(2026-10-09): frontend `66a04e1`, backend `11bb2f2`(시연 폴백 파일 세트·추출 재생) + 이름 2차 매칭 `1b98f4d`(로컬·미push·미배포), ai-agent `4342903`,
+- 기준 커밋(2026-10-09): frontend `66a04e1`, backend `11bb2f2`(시연 폴백 파일 세트·추출 재생) + 이름 2차 매칭 `1b98f4d`(push·서버 배포 완료), ai-agent `4342903`,
   data-platform `5e59e55` (서버에는 2026-09-20 기준 frontend `58d62f2`·backend `62360ca`·ai-agent `b83e691`이 올라가 있음; snapshot r25는 backend `6c0454e`·ai-agent `5cf295b`)
 - 명령의 정본은 각 저장소 README와 이 저장소의 [local setup](local-setup.md)·[runtime profiles](runtime-profiles.md)다.
 - 갱신: 경계·계약·디렉터리 구조가 바뀌는 PR을 병합하면 해당 절을 고친다. 미커밋 WIP나 개인 배포 상태는 여기 쓰지 않는다.
