@@ -122,7 +122,7 @@ src/ui/Assistant.tsx    Case AI 도우미
 src/ui/StateFlow.tsx    상태 전이 SVG + 담당자 업무 7단계(2 서류 등록 → 3 HSK 확정 → 4 AI 심사)
 src/ui/ReportPrint.tsx  보고서 PDF 저장: 인쇄 전용 보고서 사본을 body 끝에 portal로 붙이고 window.print() (PDF는 브라우저 인쇄 대상)
 src/ui/nextSteps.ts     "이어서 할 일" 행 계산(nextStepRows)·comparisonFor. Review.tsx와 ReportPrint.tsx가 공유
-src/ui/Admin.tsx        숨김 #/admin LLM 설정 + 시연 폴백(DemoFallbackCard: 모드 끄기/자동/항상 라디오, 재생 대기 시간, 등록 세트 표, Case→심사 실행 선택 후 등록; 승인자만, 2026-09-30)
+src/ui/Admin.tsx        숨김 #/admin LLM 설정 + 시연 폴백(DemoFallbackCard: 모드 끄기/자동/항상 라디오, 재생 대기 시간, 등록 세트 표, Case→심사 실행 선택 후 등록, 서류 파일로 세트 만들기; 승인자만, 2026-09-30·10-09)
 src/*.css               styles.css → components → krds → motion → stages → review → print (import 순서 = 캐스케이드)
                         print.css는 @media print에서 .report-print만 남기고 나머지 body 자식을 숨긴다
 scripts/                check-static-boundaries.mjs(=lint), check-contract.mjs, sync-backend-openapi.mjs, doctor.mjs
@@ -255,6 +255,13 @@ uv run --no-sync customs-backend-api
   temporal_context.law_as_of·input_manifest_sha256을 새 요청 값으로, `result_sha256` 재계산 → `_build_run`의 검증을 그대로 통과). 자식 run(정정 재심사)은 폴백을 쓰지 않는다.
   `delay_seconds`(기본 4초)만큼 sleep해 진행 화면이 자연스럽게 보이게 한다. Case HSK `?agent=true`도 같은 규칙으로 저장된 순위를 재생한다(`_demo_fallback_hs_view`, Case에 저장).
   사용 횟수·마지막 사용 시각을 세트에 기록한다. 결과에 폴백 표식은 없다(심사 화면은 실제 결과와 동일하게 보임). 도우미(assistant) 답변은 폴백 대상이 아니다.
+  - 추출 재생(2026-10-09): 등록 때 각 확정 문서의 원본 파일 추출 결과(`DemoFallbackSetRecord.extractions`: 원본 `source_sha256`+v2 추출 결과)를 함께 저장한다.
+    저장 조건은 화면 기본 확정 텍스트(`demo_extraction_preview_text` = 프런트 `extractionPreviewText`, span을 쪽·reading_order 순으로 `
+` 연결)가 확정 텍스트와 **정확히 같을 때**만이다.
+    `request_document_extraction`은 같은 원본 바이트면 모드 규칙대로(always 무조건, auto는 Agent 실패·failed·unavailable일 때) 저장된 결과를 새 asset·job ID로 재바인딩해 돌려준다. 그래서 Agent가 죽어도 업로드→추출→확정→심사가 이어진다.
+  - 파일로 세트 만들기(2026-10-09, 프런트 전용 조합): `#/admin` 폼에서 파일 여러 개+유형(파일명 추정)을 고르면 store `prepareDemoFallbackSet`이 준비용 Case
+    `[시연 폴백 준비] 이름`을 만들고 업로드→추출→기본 텍스트 그대로 확정→`hs-classification?agent=true`→심사→세트 등록→Case 삭제를 기존 API로 순서대로 부른다(실패해도 Case는 지움).
+    심사자+승인자 역할이 모두 필요하다. 시연 때는 같은 파일을 올리고 추출 텍스트를 고치지 않고 확정해야 재생된다.
 - 보정 제안 → 재심사
   1. reviewer가 제안한다.
   2. approver가 승인한다. **작성자 본인은 승인할 수 없다.**
