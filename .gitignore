@@ -20,3 +20,6 @@ _artifacts/
 # Separately delivered operator packages are never harness source.
 *.bundle
 *.bundle.*
+
+# Playwright MCP screenshots/videos.
+.playwright-mcp/
