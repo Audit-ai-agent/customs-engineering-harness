@@ -3,8 +3,8 @@
 5개 저장소를 매번 처음부터 읽지 않도록 한 곳에 정리한 레퍼런스다. 작업을 시작할 때 이 문서로 위치를
 잡고, 실제 수정 전에는 해당 파일을 직접 열어 확인한다. 이 문서는 요약이므로 코드와 다르면 코드가 맞다.
 
-- 기준 커밋(2026-10-09): frontend `66a04e1`, backend `11bb2f2`(시연 폴백 파일 세트·추출 재생) + 이름 2차 매칭 `1b98f4d`(push·서버 배포 완료), ai-agent `4342903`,
-  data-platform `5e59e55` (서버에는 2026-09-20 기준 frontend `58d62f2`·backend `62360ca`·ai-agent `b83e691`이 올라가 있음; snapshot r25는 backend `6c0454e`·ai-agent `5cf295b`)
+- 기준 커밋(2026-10-28, 5개 레포 모두 push): frontend `d246180`(로그인 화면 2단·Keycloak 화면 전환 포함), backend `d75d002`(Keycloak 창 2단), ai-agent `4ad474b`,
+  data-platform `3101903`(`tools/demo_graph.py`·`demo_snapshot.py` 보고서용 읽기 전용 도구). 2026-10-09 기준: frontend `66a04e1`, backend `11bb2f2` + 이름 2차 매칭 `1b98f4d`(push·서버 배포 완료) (서버에는 2026-09-20 기준 frontend `58d62f2`·backend `62360ca`·ai-agent `b83e691`이 올라가 있음; snapshot r25는 backend `6c0454e`·ai-agent `5cf295b`)
 - 명령의 정본은 각 저장소 README와 이 저장소의 [local setup](local-setup.md)·[runtime profiles](runtime-profiles.md)다.
 - 갱신: 경계·계약·디렉터리 구조가 바뀌는 PR을 병합하면 해당 절을 고친다. 미커밋 WIP나 개인 배포 상태는 여기 쓰지 않는다.
 
@@ -95,7 +95,7 @@ src/main.ts             부트스트랩: /admin→#/admin 정규화, 로그인 �
 src/workbench.tsx       WorkbenchStore 생성 + React root (StrictMode 없음)
 src/auth.ts             LocalDevelopmentSession(메모리 토큰, reviewer/approver 전환)
 src/functional-oidc.ts  OidcSession(oidc-client-ts, Auth Code+PKCE, 토큰 메모리, state만 sessionStorage)
-src/login.ts            로그인 화면(React 아님, DOM 직접)
+src/login.ts            로그인 화면(2단: 제품 소개+로그인, React 아님, DOM 직접). UAT 버튼을 누르면 같은 배치의 Keycloak 로그인 창으로 View Transition
 src/api/v1/client.ts    ApiClient: 모든 Backend 호출, 입력 검증, assertIdentity/assertOrg, 타임아웃, Idempotency-Key
 src/api/v1/decoders.ts  응답 런타임 디코더(decodeXxx) + ContractError
 src/api/v1/types.ts     API 타입(수작업. OpenAPI 생성 코드 아님)
@@ -363,7 +363,7 @@ uv run --no-sync customs-backend-api
 | 지표 | `operations_metrics.py`, `tests/product/test_operations_metrics.py` |
 | LLM 관리자 | `admin_settings.py`, `service.py`, `adapters.py` `_LLM_SETTINGS_PATH`, `tests/product/test_admin_llm_settings.py` |
 | 시연 폴백 | `domain.py`(DemoFallback*), `repository.py`/`functional_repository.py`(`demo_fallback_sets`·`demo_fallback_settings` 영속 키), `service.py`(`_review_with_demo_fallback`, `_replay_demo_fallback`, `_demo_fallback_hs_view`, admin 메서드), `api.py`, `tests/product/test_demo_fallback.py` |
-| Keycloak realm·테마 | `local_profile.py`, `functional_uat_branding.py`, `deploy/functional-uat/keycloak-themes/` |
+| Keycloak realm·테마 | `local_profile.py`, `functional_uat_branding.py`, `deploy/functional-uat/keycloak-themes/` (로그인 창 2단 배치는 `customs-workbench/login/template.ftl`=Keycloak 26.3.3 base 템플릿 복사본+소개 영역, 소개 CSS는 frontend `components.css` 로그인 절 복사본) |
 
 ---
 
